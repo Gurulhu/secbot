@@ -23,5 +23,6 @@ jobs:
       - run:
           name: Quality Gate
           command: |
+            sudo pip install requests
             wget -c https://gist.githubusercontent.com/sfcardoso1/806b5bc90002317583bd29a277c5979f/raw/0fd41211b462d95a3679c3d45ab68ce2adf94e6b/fefs.py
             python fefs.py
