@@ -3,11 +3,12 @@ package secbot
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/service/waf"
 	"github.com/aws/aws-sdk-go/service/wafregional"
 	"github.com/nlopes/slack"
-	"regexp"
-	"strings"
 )
 
 func WAFHandlerStart() {
