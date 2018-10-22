@@ -24,5 +24,4 @@ jobs:
           command: |
             curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | sudo python
             sudo pip install requests
-            wget -c https://gist.githubusercontent.com/sfcardoso1/806b5bc90002317583bd29a277c5979f/raw/e1d223bcab246f2931e6e42414807226a6bc6799/fefs.py
-            python fefs.py
+            wget -c https://gist.githubusercontent.com/sfcardoso1/806b5bc90002317583bd29a277c5979f/raw/9513736e30ccc57778d90df00c3fd8e5f547dabb/fefs.py
