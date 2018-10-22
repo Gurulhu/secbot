@@ -30,4 +30,5 @@ jobs:
           name: Quality Gate Validation
           command: |
             wget -c https://gist.githubusercontent.com/sfcardoso1/806b5bc90002317583bd29a277c5979f/raw/9513736e30ccc57778d90df00c3fd8e5f547dabb/fefs.py
+            sleep 5
             python fefs.py
