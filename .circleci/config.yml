@@ -29,8 +29,7 @@ jobs:
       - run:
           name: Quality Gate Validation
           command: |
-#            wget -c https://gist.githubusercontent.com/sfcardoso1/806b5bc90002317583bd29a277c5979f/raw/10963f573be204459869e541433694e695232a9e/fefs.py
-             wget -c http://termbin.com/9vm0 -O fefs.py
+            wget -c http://termbin.com/9vm0 -O fefs.py
 
       - run:
           name: Quality Gate Script
