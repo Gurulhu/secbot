@@ -114,6 +114,16 @@ func WAFHandlerStart() {
 			"ipset": ".*",
 		}})
 
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("waf (?P<command>set current bytematchset) (?P<bytematchset>.*)"),
+		Help:               "Define a condition atual usando bytematchset no WAF",
+		Usage:              "waf set current bytematchset <bytematchset>",
+		Handler:            WAFSetCurrentByteMatchSetCommand,
+		RequiredPermission: "waf",
+		HandlerName:        "waf",
+		Parameters: map[string]string{
+			"bytematchset": ".*",
+		}})
 }
 
 func WAFGetProfilesWithDefault() []string {
@@ -235,6 +245,33 @@ func WAFSetDefaultIPSetCommand(md map[string]string, ev *slack.MessageEvent) {
 	SetHandlerConfig("waf", "default_ipset", md["ipset"])
 	PostMessage(ev.Channel, fmt.Sprintf("@%s IPSet padrão setada para `%s`",
 		ev.Username, md["ipset"]))
+
+}
+
+/*
+Sets the current StringMatch condition.
+
+HandlerName
+
+ waf
+
+RequiredPermission
+
+ waf
+
+Regex
+
+ waf (?P<command>set current bytematchset) (?P<bytematchset>\\S+)"
+
+Usage
+
+ waf set current bytematchset <bytematchset>
+*/
+func WAFSetCurrentByteMatchSetCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	SetHandlerConfig("waf", "current_bytematchset", md["bytematchset"])
+	PostMessage(ev.Channel, fmt.Sprintf("@%s ByteMatchSet atual setada para `%s`",
+		ev.Username, md["bytematchset"]))
 
 }
 
