@@ -21,3 +21,13 @@ func ExampleCredentialsSetCredential() {
 
 	CredentialsSetCredential(ex)
 }
+
+func doNothing() { // Noncompliant
+}
+
+var (
+  ip   = "127.0.0.1"
+  port = 3333
+)
+
+SocketClient(ip, port)
