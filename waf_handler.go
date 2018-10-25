@@ -27,10 +27,17 @@ func WAFHandlerStart() {
 		}})
 
 	AddCommand(Command{
-		Regex:       regexp.MustCompile("waf (?P<command>list)"),
+		Regex:       regexp.MustCompile("waf (?P<command>list ipset$)"),
 		Help:        "Lista os IPs bloqueados no WAF",
 		Usage:       "waf list",
 		Handler:     WAFListCommand,
+		HandlerName: "waf"})
+
+	AddCommand(Command{
+		Regex:       regexp.MustCompile("waf (?P<command>list bytematchset$)"),
+		Help:        "Lista as ByteMatchSet conditions bloqueadas no WAF",
+		Usage:       "waf list bytematchset",
+		Handler:     WAFListByteMatchSetsCommand,
 		HandlerName: "waf"})
 
 	AddCommand(Command{
@@ -780,7 +787,7 @@ func WAFBlockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEven
 }
 
 func WAFGetByteMatchSetByName(wafregional *wafregional.WAFRegional, name string) (*waf.GetByteMatchSetOutput, error) {
-	bytesetlist, err := WAFGetByteList(wafregional)
+	bytesetlist, err := WAFGetByteMatchSummaryList(wafregional)
 
 	if err != nil {
 		return nil, err
@@ -810,7 +817,7 @@ func WAFGetByteMatchSetByName(wafregional *wafregional.WAFRegional, name string)
 
 }
 
-func WAFGetByteList(wafregional *wafregional.WAFRegional) (*waf.ListByteMatchSetsOutput, error) {
+func WAFGetByteMatchSummaryList(wafregional *wafregional.WAFRegional) (*waf.ListByteMatchSetsOutput, error) {
 	bytesets, err := wafregional.ListByteMatchSets(&waf.ListByteMatchSetsInput{})
 
 	if err != nil {
@@ -830,4 +837,85 @@ func WAFGetCurrentByteMatchSet() string {
 
 	return byteset
 
+}
+
+func WAFGetByteMatchList(wafregional *wafregional.WAFRegional) ([]*waf.ByteMatchSet, error) {
+	byteMatchListSummary, err := WAFGetByteMatchSummaryList(wafregional)
+
+	if err != nil {
+		return nil, err
+	}
+	var byteMatchSetList []*waf.ByteMatchSet
+
+	for _, v := range byteMatchListSummary.ByteMatchSets {
+		byteMatchSetOutput, err := wafregional.GetByteMatchSet(&waf.GetByteMatchSetInput{ByteMatchSetId: v.ByteMatchSetId})
+		if err != nil {
+			return nil, err
+		}
+		byteMatchSetList = append(byteMatchSetList, byteMatchSetOutput.ByteMatchSet)
+	}
+
+	if len(byteMatchSetList) == 0 {
+		return nil, errors.New("Não existe nenhuma condition criada ainda")
+	}
+	return byteMatchSetList, err
+}
+
+/*
+Lists blocked ByteMatchSets.
+
+HandlerName
+
+ waf
+
+Regex
+
+ waf (?P<account>\\S+) (?P<region>\\S+) (?P<command>list)
+
+ waf (?P<command>list bytematchset)
+
+Usage
+
+ waf <account> <region> list
+
+ waf list
+*/
+
+func WAFListByteMatchSetsCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, account := WAFValidateAccount(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma conta especificada e conta padrão não configurada\n"+
+			"Utilize `waf set default acccount <account>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	rvalid, region := WAFValidateRegion(md)
+
+	if !rvalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma região especificada e região padrão não configurada\n"+
+			"Utilize `waf set default region <region>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	sess, _ := AWSGetSession(account, region)
+
+	wafr := wafregional.New(sess)
+
+	byteMatchsetList, err := WAFGetByteMatchList(wafr)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Erro ao pegar ao pegar a byteMatchsetList: %s", err.Error))
+	}
+
+	for _, bytematch := range byteMatchsetList {
+		byteMatchTuples := bytematch.ByteMatchTuples
+		PostMessage(ev.Channel, fmt.Sprintf("*### A condition é:* `%s`", *bytematch.Name))
+		for _, byteMatchTuple := range byteMatchTuples {
+			PostMessage(ev.Channel, fmt.Sprintf("- *Filtro por Tipo:* `%s` *Match:* `%s` *Valor:* `%s`", *byteMatchTuple.FieldToMatch.Type, *byteMatchTuple.PositionalConstraint, string(byteMatchTuple.TargetString)))
+		}
+	}
 }
