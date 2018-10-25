@@ -101,6 +101,18 @@ func WAFHandlerStart() {
 		}})
 
 	AddCommand(Command{
+		Regex:              regexp.MustCompile("waf (?P<command>unblock) (?P<type>(?i)(header|method|query_string|uri|body)) (?P<value>\\S+)"),
+		Help:               "Desbloqueia por tipo do campo da requisição no WAF",
+		Usage:              "waf unblock <header|method|query_string|uri|body> <value> ",
+		Handler:            WAFUnblockRequestFieldTypeCommand,
+		RequiredPermission: "waf",
+		HandlerName:        "waf",
+		Parameters: map[string]string{
+			"type":  "(?i)(header|method|query_string|uri|body)",
+			"value": "\\S+",
+		}})
+
+	AddCommand(Command{
 		Regex:              regexp.MustCompile("waf (?P<command>set default account) (?P<account>\\S+)"),
 		Help:               "Define a conta padrão do WAF",
 		Usage:              "waf set default account <account>",
@@ -760,6 +772,102 @@ func WAFBlockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEven
 	}
 
 	action := waf.ChangeActionInsert
+	var stringMatchUpdates []*waf.ByteMatchSetUpdate
+	stringMatchUpdates = append(stringMatchUpdates, &waf.ByteMatchSetUpdate{Action: &action, ByteMatchTuple: &stringMatch})
+
+	token, err := WAFGetToken(wafr)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro obtendo o token: %s", ev.Username, err.Error()))
+		return
+	}
+
+	updateinput := waf.UpdateByteMatchSetInput{
+		ChangeToken:    &token,
+		ByteMatchSetId: byteset.ByteMatchSet.ByteMatchSetId,
+		Updates:        stringMatchUpdates,
+	}
+
+	_, err = wafr.UpdateByteMatchSet(&updateinput)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Ocorreu um erro ao atualizar a condition: %s", err.Error()))
+		return
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("Condition atualizada com sucesso."))
+}
+
+/*
+Unblock the specified String in the field type on the account's WAF
+
+HandlerName
+
+ waf
+
+RequiredPermission
+
+ waf
+
+Regex
+
+ waf (?P<command>unblock) (?P<type>(?i)(header|method|query_string|uri|body)) (?<value>\\S+)
+
+Usage
+
+ waf unblock <header|method|query_string|uri|body> <value>
+*/
+
+func WAFUnblockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, account := WAFValidateAccount(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma conta especificada e conta padrão não configurada\n"+
+			"Utilize `waf set default acccount <account>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	rvalid, region := WAFValidateRegion(md)
+
+	if !rvalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma região especificada e região padrão não configurada\n"+
+			"Utilize `waf set default region <region>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	sess, _ := AWSGetSession(account, region)
+
+	wafr := wafregional.New(sess)
+
+	byteset, err := WAFGetByteMatchSetByName(wafr, WAFGetCurrentByteMatchSet())
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Erro ao tentar pegar a condition %s: %s", WAFGetCurrentByteMatchSet(), err.Error()))
+		return
+	}
+
+	matchType := waf.PositionalConstraintContains
+	transformationType := waf.TextTransformationNone
+	value := []byte(md["value"])
+	stringMatch := waf.ByteMatchTuple{PositionalConstraint: &matchType, TargetString: value, TextTransformation: &transformationType}
+
+	if strings.EqualFold(md["type"], "body") {
+		fieldTypeBody := waf.MatchFieldTypeBody
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeBody}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	} else if strings.EqualFold(md["type"], "uri") {
+		fieldTypeUri := waf.MatchFieldTypeUri
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeUri}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	} else {
+		PostMessage(ev.Channel, fmt.Sprintf("Campo %s ainda não foi implementado", md["type"]))
+		return
+	}
+
+	action := waf.ChangeActionDelete
 	var stringMatchUpdates []*waf.ByteMatchSetUpdate
 	stringMatchUpdates = append(stringMatchUpdates, &waf.ByteMatchSetUpdate{Action: &action, ByteMatchTuple: &stringMatch})
 
