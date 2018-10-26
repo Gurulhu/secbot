@@ -758,15 +758,26 @@ func WAFBlockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEven
 	value := []byte(md["value"])
 	stringMatch := waf.ByteMatchTuple{PositionalConstraint: &matchType, TargetString: value, TextTransformation: &transformationType}
 
-	if strings.EqualFold(md["type"], "body") {
+	fieldType := md["type"]
+	switch {
+	case strings.EqualFold(fieldType, "body"):
 		fieldTypeBody := waf.MatchFieldTypeBody
 		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeBody}
 		stringMatch.SetFieldToMatch(&fieldTypeMatch)
-	} else if strings.EqualFold(md["type"], "uri") {
+	case strings.EqualFold(fieldType, "uri"):
 		fieldTypeUri := waf.MatchFieldTypeUri
 		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeUri}
 		stringMatch.SetFieldToMatch(&fieldTypeMatch)
-	} else {
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "method"):
+		fieldTypeMethod := waf.MatchFieldTypeMethod
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeMethod}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "query_string"):
+		fieldTypeQueryString := waf.MatchFieldTypeQueryString
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeQueryString}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	default:
 		PostMessage(ev.Channel, fmt.Sprintf("Campo %s ainda não foi implementado", md["type"]))
 		return
 	}
@@ -854,15 +865,26 @@ func WAFUnblockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEv
 	value := []byte(md["value"])
 	stringMatch := waf.ByteMatchTuple{PositionalConstraint: &matchType, TargetString: value, TextTransformation: &transformationType}
 
-	if strings.EqualFold(md["type"], "body") {
+	fieldType := md["type"]
+	switch {
+	case strings.EqualFold(fieldType, "body"):
 		fieldTypeBody := waf.MatchFieldTypeBody
 		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeBody}
 		stringMatch.SetFieldToMatch(&fieldTypeMatch)
-	} else if strings.EqualFold(md["type"], "uri") {
+	case strings.EqualFold(fieldType, "uri"):
 		fieldTypeUri := waf.MatchFieldTypeUri
 		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeUri}
 		stringMatch.SetFieldToMatch(&fieldTypeMatch)
-	} else {
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "method"):
+		fieldTypeMethod := waf.MatchFieldTypeMethod
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeMethod}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "query_string"):
+		fieldTypeQueryString := waf.MatchFieldTypeQueryString
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeQueryString}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	default:
 		PostMessage(ev.Channel, fmt.Sprintf("Campo %s ainda não foi implementado", md["type"]))
 		return
 	}
