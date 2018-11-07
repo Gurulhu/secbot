@@ -3,11 +3,12 @@ package secbot
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/service/waf"
 	"github.com/aws/aws-sdk-go/service/wafregional"
 	"github.com/nlopes/slack"
-	"regexp"
-	"strings"
 )
 
 func WAFHandlerStart() {
@@ -26,10 +27,17 @@ func WAFHandlerStart() {
 		}})
 
 	AddCommand(Command{
-		Regex:       regexp.MustCompile("waf (?P<command>list)"),
+		Regex:       regexp.MustCompile("waf (?P<command>list ipset$)"),
 		Help:        "Lista os IPs bloqueados no WAF",
 		Usage:       "waf list",
 		Handler:     WAFListCommand,
+		HandlerName: "waf"})
+
+	AddCommand(Command{
+		Regex:       regexp.MustCompile("waf (?P<command>list bytematchset$)"),
+		Help:        "Lista as ByteMatchSet conditions bloqueadas no WAF",
+		Usage:       "waf list bytematchset",
+		Handler:     WAFListByteMatchSetsCommand,
 		HandlerName: "waf"})
 
 	AddCommand(Command{
@@ -81,6 +89,30 @@ func WAFHandlerStart() {
 		}})
 
 	AddCommand(Command{
+		Regex:              regexp.MustCompile("waf (?P<command>block) (?P<type>(?i)(header|method|query_string|uri|body)) (?P<value>\\S+)"),
+		Help:               "Bloqueia por tipo do campo da requisição no WAF",
+		Usage:              "waf block <header|method|query_string|uri|body> <value> ",
+		Handler:            WAFBlockRequestFieldTypeCommand,
+		RequiredPermission: "waf",
+		HandlerName:        "waf",
+		Parameters: map[string]string{
+			"type":  "(?i)(header|method|query_string|uri|body)",
+			"value": "\\S+",
+		}})
+
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("waf (?P<command>unblock) (?P<type>(?i)(header|method|query_string|uri|body)) (?P<value>\\S+)"),
+		Help:               "Desbloqueia por tipo do campo da requisição no WAF",
+		Usage:              "waf unblock <header|method|query_string|uri|body> <value> ",
+		Handler:            WAFUnblockRequestFieldTypeCommand,
+		RequiredPermission: "waf",
+		HandlerName:        "waf",
+		Parameters: map[string]string{
+			"type":  "(?i)(header|method|query_string|uri|body)",
+			"value": "\\S+",
+		}})
+
+	AddCommand(Command{
 		Regex:              regexp.MustCompile("waf (?P<command>set default account) (?P<account>\\S+)"),
 		Help:               "Define a conta padrão do WAF",
 		Usage:              "waf set default account <account>",
@@ -113,6 +145,16 @@ func WAFHandlerStart() {
 			"ipset": ".*",
 		}})
 
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("waf (?P<command>set current bytematchset) (?P<bytematchset>.*)"),
+		Help:               "Define a condition atual usando bytematchset no WAF",
+		Usage:              "waf set current bytematchset <bytematchset>",
+		Handler:            WAFSetCurrentByteMatchSetCommand,
+		RequiredPermission: "waf",
+		HandlerName:        "waf",
+		Parameters: map[string]string{
+			"bytematchset": ".*",
+		}})
 }
 
 func WAFGetProfilesWithDefault() []string {
@@ -234,6 +276,33 @@ func WAFSetDefaultIPSetCommand(md map[string]string, ev *slack.MessageEvent) {
 	SetHandlerConfig("waf", "default_ipset", md["ipset"])
 	PostMessage(ev.Channel, fmt.Sprintf("@%s IPSet padrão setada para `%s`",
 		ev.Username, md["ipset"]))
+
+}
+
+/*
+Sets the current StringMatch condition.
+
+HandlerName
+
+ waf
+
+RequiredPermission
+
+ waf
+
+Regex
+
+ waf (?P<command>set current bytematchset) (?P<bytematchset>\\S+)"
+
+Usage
+
+ waf set current bytematchset <bytematchset>
+*/
+func WAFSetCurrentByteMatchSetCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	SetHandlerConfig("waf", "current_bytematchset", md["bytematchset"])
+	PostMessage(ev.Channel, fmt.Sprintf("@%s ByteMatchSet atual setada para `%s`",
+		ev.Username, md["bytematchset"]))
 
 }
 
@@ -631,4 +700,352 @@ func WAFListIPs(wafregional *wafregional.WAFRegional) ([]string, error) {
 	ips := WAFListIPSetIPs(ipsetres)
 
 	return ips, nil
+}
+
+/*
+Blocks the specified String in the field type on the account's WAF
+
+HandlerName
+
+ waf
+
+RequiredPermission
+
+ waf
+
+Regex
+
+ waf (?P<command>block) (?P<type>(?i)(header|method|query_string|uri|body)) (?<value>\\S+)
+
+Usage
+
+ waf block <header|method|query_string|uri|body> <value>
+*/
+
+func WAFBlockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, account := WAFValidateAccount(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma conta especificada e conta padrão não configurada\n"+
+			"Utilize `waf set default acccount <account>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	rvalid, region := WAFValidateRegion(md)
+
+	if !rvalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma região especificada e região padrão não configurada\n"+
+			"Utilize `waf set default region <region>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	sess, _ := AWSGetSession(account, region)
+
+	wafr := wafregional.New(sess)
+
+	byteset, err := WAFGetByteMatchSetByName(wafr, WAFGetCurrentByteMatchSet())
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Erro ao tentar pegar a condition %s: %s", WAFGetCurrentByteMatchSet(), err.Error()))
+		return
+	}
+
+	matchType := waf.PositionalConstraintContains
+	transformationType := waf.TextTransformationNone
+	value := []byte(md["value"])
+	stringMatch := waf.ByteMatchTuple{PositionalConstraint: &matchType, TargetString: value, TextTransformation: &transformationType}
+
+	fieldType := md["type"]
+	switch {
+	case strings.EqualFold(fieldType, "body"):
+		fieldTypeBody := waf.MatchFieldTypeBody
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeBody}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "uri"):
+		fieldTypeUri := waf.MatchFieldTypeUri
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeUri}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "method"):
+		fieldTypeMethod := waf.MatchFieldTypeMethod
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeMethod}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "query_string"):
+		fieldTypeQueryString := waf.MatchFieldTypeQueryString
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeQueryString}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	default:
+		PostMessage(ev.Channel, fmt.Sprintf("Campo %s ainda não foi implementado", md["type"]))
+		return
+	}
+
+	action := waf.ChangeActionInsert
+	var stringMatchUpdates []*waf.ByteMatchSetUpdate
+	stringMatchUpdates = append(stringMatchUpdates, &waf.ByteMatchSetUpdate{Action: &action, ByteMatchTuple: &stringMatch})
+
+	token, err := WAFGetToken(wafr)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro obtendo o token: %s", ev.Username, err.Error()))
+		return
+	}
+
+	updateinput := waf.UpdateByteMatchSetInput{
+		ChangeToken:    &token,
+		ByteMatchSetId: byteset.ByteMatchSet.ByteMatchSetId,
+		Updates:        stringMatchUpdates,
+	}
+
+	_, err = wafr.UpdateByteMatchSet(&updateinput)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Ocorreu um erro ao atualizar a condition: %s", err.Error()))
+		return
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("Condition atualizada com sucesso."))
+}
+
+/*
+Unblock the specified String in the field type on the account's WAF
+
+HandlerName
+
+ waf
+
+RequiredPermission
+
+ waf
+
+Regex
+
+ waf (?P<command>unblock) (?P<type>(?i)(header|method|query_string|uri|body)) (?<value>\\S+)
+
+Usage
+
+ waf unblock <header|method|query_string|uri|body> <value>
+*/
+
+func WAFUnblockRequestFieldTypeCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, account := WAFValidateAccount(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma conta especificada e conta padrão não configurada\n"+
+			"Utilize `waf set default acccount <account>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	rvalid, region := WAFValidateRegion(md)
+
+	if !rvalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma região especificada e região padrão não configurada\n"+
+			"Utilize `waf set default region <region>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	sess, _ := AWSGetSession(account, region)
+
+	wafr := wafregional.New(sess)
+
+	byteset, err := WAFGetByteMatchSetByName(wafr, WAFGetCurrentByteMatchSet())
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Erro ao tentar pegar a condition %s: %s", WAFGetCurrentByteMatchSet(), err.Error()))
+		return
+	}
+
+	matchType := waf.PositionalConstraintContains
+	transformationType := waf.TextTransformationNone
+	value := []byte(md["value"])
+	stringMatch := waf.ByteMatchTuple{PositionalConstraint: &matchType, TargetString: value, TextTransformation: &transformationType}
+
+	fieldType := md["type"]
+	switch {
+	case strings.EqualFold(fieldType, "body"):
+		fieldTypeBody := waf.MatchFieldTypeBody
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeBody}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "uri"):
+		fieldTypeUri := waf.MatchFieldTypeUri
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeUri}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "method"):
+		fieldTypeMethod := waf.MatchFieldTypeMethod
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeMethod}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	case strings.EqualFold(fieldType, "query_string"):
+		fieldTypeQueryString := waf.MatchFieldTypeQueryString
+		fieldTypeMatch := waf.FieldToMatch{Type: &fieldTypeQueryString}
+		stringMatch.SetFieldToMatch(&fieldTypeMatch)
+	default:
+		PostMessage(ev.Channel, fmt.Sprintf("Campo %s ainda não foi implementado", md["type"]))
+		return
+	}
+
+	action := waf.ChangeActionDelete
+	var stringMatchUpdates []*waf.ByteMatchSetUpdate
+	stringMatchUpdates = append(stringMatchUpdates, &waf.ByteMatchSetUpdate{Action: &action, ByteMatchTuple: &stringMatch})
+
+	token, err := WAFGetToken(wafr)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro obtendo o token: %s", ev.Username, err.Error()))
+		return
+	}
+
+	updateinput := waf.UpdateByteMatchSetInput{
+		ChangeToken:    &token,
+		ByteMatchSetId: byteset.ByteMatchSet.ByteMatchSetId,
+		Updates:        stringMatchUpdates,
+	}
+
+	_, err = wafr.UpdateByteMatchSet(&updateinput)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Ocorreu um erro ao atualizar a condition: %s", err.Error()))
+		return
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("Condition atualizada com sucesso."))
+}
+
+func WAFGetByteMatchSetByName(wafregional *wafregional.WAFRegional, name string) (*waf.GetByteMatchSetOutput, error) {
+	bytesetlist, err := WAFGetByteMatchSummaryList(wafregional)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var bytematchsetid = ""
+
+	for _, v := range bytesetlist.ByteMatchSets {
+		if *v.Name == name {
+			bytematchsetid = *v.ByteMatchSetId
+		}
+	}
+
+	if len(bytematchsetid) == 0 {
+		return nil, errors.New(fmt.Sprintf("ByteMatchSet %s não encontrado", name))
+	}
+
+	bytematchset, err := wafregional.GetByteMatchSet(&waf.GetByteMatchSetInput{
+		ByteMatchSetId: &bytematchsetid,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return bytematchset, nil
+
+}
+
+func WAFGetByteMatchSummaryList(wafregional *wafregional.WAFRegional) (*waf.ListByteMatchSetsOutput, error) {
+	bytesets, err := wafregional.ListByteMatchSets(&waf.ListByteMatchSetsInput{})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return bytesets, nil
+}
+
+func WAFGetCurrentByteMatchSet() string {
+
+	byteset, _ := GetHandlerConfig("waf", "current_bytematchset")
+
+	if len(byteset) == 0 {
+		return ""
+	}
+
+	return byteset
+
+}
+
+func WAFGetByteMatchList(wafregional *wafregional.WAFRegional) ([]*waf.ByteMatchSet, error) {
+	byteMatchListSummary, err := WAFGetByteMatchSummaryList(wafregional)
+
+	if err != nil {
+		return nil, err
+	}
+	var byteMatchSetList []*waf.ByteMatchSet
+
+	for _, v := range byteMatchListSummary.ByteMatchSets {
+		byteMatchSetOutput, err := wafregional.GetByteMatchSet(&waf.GetByteMatchSetInput{ByteMatchSetId: v.ByteMatchSetId})
+		if err != nil {
+			return nil, err
+		}
+		byteMatchSetList = append(byteMatchSetList, byteMatchSetOutput.ByteMatchSet)
+	}
+
+	if len(byteMatchSetList) == 0 {
+		return nil, errors.New("Não existe nenhuma condition criada ainda")
+	}
+	return byteMatchSetList, err
+}
+
+/*
+Lists blocked ByteMatchSets.
+
+HandlerName
+
+ waf
+
+Regex
+
+ waf (?P<account>\\S+) (?P<region>\\S+) (?P<command>list)
+
+ waf (?P<command>list bytematchset)
+
+Usage
+
+ waf <account> <region> list
+
+ waf list
+*/
+
+func WAFListByteMatchSetsCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, account := WAFValidateAccount(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma conta especificada e conta padrão não configurada\n"+
+			"Utilize `waf set default acccount <account>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	rvalid, region := WAFValidateRegion(md)
+
+	if !rvalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma região especificada e região padrão não configurada\n"+
+			"Utilize `waf set default region <region>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	sess, _ := AWSGetSession(account, region)
+
+	wafr := wafregional.New(sess)
+
+	byteMatchsetList, err := WAFGetByteMatchList(wafr)
+
+	if err != nil {
+		PostMessage(ev.Channel, fmt.Sprintf("Erro ao pegar ao pegar a byteMatchsetList: %s", err.Error))
+	}
+
+	for _, bytematch := range byteMatchsetList {
+		byteMatchTuples := bytematch.ByteMatchTuples
+		PostMessage(ev.Channel, fmt.Sprintf("*### A condition é:* `%s`", *bytematch.Name))
+		for _, byteMatchTuple := range byteMatchTuples {
+			PostMessage(ev.Channel, fmt.Sprintf("- *Filtro por Tipo:* `%s` *Match:* `%s` *Valor:* `%s`", *byteMatchTuple.FieldToMatch.Type, *byteMatchTuple.PositionalConstraint, string(byteMatchTuple.TargetString)))
+		}
+	}
 }
