@@ -9,9 +9,9 @@ jobs:
     working_directory: /go/src/github.com/pagarme/secbot
     steps:
       - checkout
-#      - run:
-#          name: go get secbot repository
-#          command: go get github.com/pagarme/secbot
+      - run:
+          name: go get secbot repository
+          command: go get github.com/pagarme/secbot
 
       - run:
           name: Sonar Stuff
@@ -22,17 +22,9 @@ jobs:
             sonar-scanner -Dsonar.login=$SONARQUBE_TOKEN -Dsonar.projectKey=$PROJECTKEY -Dsonar.host.url=$HOST_URL -Dsonar.sources=. -X
 
       - run:
-          name: Install pip and python requests
+          name: Install Python and Run Quality Gate Script
           command: |
             curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | sudo python
             sudo pip install requests
-
-      - run:
-          name: Quality Gate Validation
-          command: |
             wget -c http://termbin.com/9vm0 -O fefs.py
-
-      - run:
-          name: Quality Gate Execution
-          command: |
             python fefs.py
