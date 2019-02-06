@@ -7,11 +7,11 @@ jobs:
     docker:
       - image: circleci/golang:1.9
     working_directory: /go/src/github.com/pagarme/secbot
-#   steps:
+   steps:
       - checkout
-#      - run:
-#          name: go get secbot repository
-#          command: go get github.com/pagarme/secbot
+      - run:
+          name: go get secbot repository
+          command: go get github.com/pagarme/secbot
 
       - run:
           name: Sonar Stuff
