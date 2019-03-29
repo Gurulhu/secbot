@@ -2,6 +2,10 @@ package secbot
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -13,19 +17,69 @@ var slack_group_map = make(map[string]*slack.Group)
 var slack_channel_map = make(map[string]*slack.Channel)
 var slack_user_map = make(map[string]*slack.User)
 
+type Slack struct {
+	Ok    bool `json:"ok"`
+	Items []struct {
+		ID      string `json:"id"`
+		Profile struct {
+			Email string `json:"email"`
+		} `json:"profile"`
+	} `json:"items"`
+}
+
+var host = os.Getenv("SLACK_HOST")
+var cookie = os.Getenv("SLACK_COOKIE")
+var client = &http.Client{}
+
+/*
+Request with the necessary headers
+*/
+func requests(Method string, url string, body io.Reader, ConType string) (*http.Response, error) {
+	req, _ := http.NewRequest(Method, url, body)
+	req.Header.Set("Origin", host)
+	req.Header.Set("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Authority", strings.Replace(host, "https://", "", -1))
+	req.Header.Set("Cookie", cookie)
+	req.Header.Set("X-Slack-Version-Ts", "1524100347")
+	if Method == "POST" {
+		req.Header.Add("Content-Type", ConType)
+	}
+	return client.Do(req)
+}
+
+/*
+Get token Slack for use in request
+*/
+func getoken() string {
+	reqtoken, err := requests("GET", host+"/admin", nil, "")
+	if err != nil {
+		return "Error"
+	}
+	tokenbodyBytes, _ := ioutil.ReadAll(reqtoken.Body)
+	split1 := strings.SplitAfter(string(tokenbodyBytes), "api_token: \"")[1]
+	token := strings.Split(split1, "\",")[0]
+	return token
+}
+
+/*
+Send invate to users in Slack
+*/
 func invite(email string) bool {
 	err := api.InviteToTeam("users", "", "", email)
-	fmt.Println(err)
 	if err != nil {
 		return false
 	}
 	return true
 }
 
+/*
+Delete users in Slack with email
+*/
 func delUser(UserID string) bool {
 	err := api.DisableUser("users", UserID)
 	if err != nil {
-		fmt.Println(err)
 		return false
 	}
 	return true
@@ -123,7 +177,7 @@ func GetUser(id string) (*slack.User, error) {
 	return user, err
 }
 
-// Gets the bot ID by looking for a user with a matching username as the one set in botname global variable.
+// GetID the bot ID by looking for a user with a matching username as the one set in botname global variable.
 func GetID(username string) (string, error) {
 	users, err := api.GetUsers()
 
