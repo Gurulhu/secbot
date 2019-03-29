@@ -16,7 +16,7 @@ import (
 	"github.com/awnumar/memguard"
 	"github.com/nlopes/slack"
 	"github.com/sirupsen/logrus"
-	"github.com/x-cray/logrus-prefixed-formatter"
+	prefixed "github.com/x-cray/logrus-prefixed-formatter"
 	"golang.org/x/sys/unix"
 )
 
@@ -26,7 +26,7 @@ var api = GetAPI()
 
 var botname = os.Getenv("BOT_NAME")
 
-var botid, _ = GetID()
+var botid, _ = GetID(botname)
 
 var logs_channel = os.Getenv("CHANNEL_NAME")
 
@@ -238,7 +238,7 @@ func Run() {
 			}
 
 			if user_ver != botid {
-				
+
 				if ev.Upload && strings.HasPrefix(ev.Channel, "D") {
 					go S3Upload(ev)
 					continue
