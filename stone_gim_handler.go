@@ -1,14 +1,29 @@
 package secbot
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/nlopes/slack"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/nlopes/slack"
 )
+
+// GIMDeactivatePatch represents a patch to deactivate users
+type GIMDeactivatePatch struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value bool   `json:"value"`
+}
+
+// GIMDeactivatePayload represents the patch payload to deactivate users
+type GIMDeactivatePayload struct {
+	DeactivatePatches []GIMDeactivatePatch `json:"patches"`
+}
 
 func StoneGIMHandlerStart() {
 
@@ -202,7 +217,6 @@ func GIMRecoverCommand(md map[string]string, ev *slack.MessageEvent) {
 
 	for _, user := range users {
 		client := &http.Client{}
-		fmt.Printf("https://gim.stone.com.br/api/management/%s/users/%s/password", cred.Login, user)
 		req, err := http.NewRequest("GET", fmt.Sprintf("https://gim.stone.com.br/api/management/%s/users/%s/password", cred.Login, user), nil)
 
 		if err != nil {
@@ -215,7 +229,6 @@ func GIMRecoverCommand(md map[string]string, ev *slack.MessageEvent) {
 		req.Header.Add("Content-Type", "application/json")
 		req.Header.Add("Accept", "application/json")
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cred.Password))
-		fmt.Println(req.Header)
 		resp, err := client.Do(req)
 
 		if resp.StatusCode == 401 {
@@ -277,7 +290,6 @@ func GIMRecoverCommand(md map[string]string, ev *slack.MessageEvent) {
 
 func GIMGetCredentials(application string) (ExternalCredential, error) {
 	cred, err := CredentialsGetCredential("gim", application)
-
 	return cred, err
 }
 
@@ -398,4 +410,47 @@ func GIMSetApplicationCommand(md map[string]string, ev *slack.MessageEvent) {
 			ev.Username, md["application"]))
 	}
 
+}
+
+// GIMDeactivateUser deactivate an user
+func GIMDeactivateUser(user string) (bool, error) {
+
+	cred, err := GIMGetCredentials(string(credentialApp.Buffer()))
+
+	content := []GIMDeactivatePatch{{Op: "replace", Path: "/active", Value: false}}
+	payload, _ := json.Marshal(GIMDeactivatePayload{DeactivatePatches: content})
+
+	client := &http.Client{}
+	req, err := http.NewRequest("PATCH", fmt.Sprintf("https://gim.stone.com.br/api/management/%s/users/%s", cred.Login, user), bytes.NewBuffer(payload))
+
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cred.Password))
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	} else if resp.StatusCode == http.StatusBadRequest {
+		bodyBytes, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			return false, err
+		}
+
+		body := string(bodyBytes)
+
+		// user's not found are already terminated or never associated
+		userNotFound := strings.Contains(body, "User not found.") || strings.Contains(body, "The specified user is not associated to this application.")
+
+		return userNotFound, nil
+	}
+
+	err = fmt.Errorf("error deactivating user %s! Status code: %d", user, resp.StatusCode)
+	return false, err
 }
