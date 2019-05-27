@@ -1,12 +1,9 @@
 package secbot
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -70,82 +67,22 @@ func getoken() string {
 Send invate to users in Slack
 */
 func invite(email string) bool {
-	body := bytes.NewBufferString("")
-	writer := multipart.NewWriter(body)
-	writer.WriteField("email", email)
-	writer.WriteField("source", "invite_modal")
-	writer.WriteField("mode", "manual")
-	writer.WriteField("channels", "")
-	writer.WriteField("token", getoken())
-	writer.WriteField("set_active", "true")
-	writer.Close()
-	ConType := writer.FormDataContentType()
-	req, err := requests("POST", host+"/api/users.admin.invite", body, ConType)
+	err := api.InviteToTeam("users", "", "", email)
 	if err != nil {
 		return false
 	}
-	Req1BodyBytes, _ := ioutil.ReadAll(req.Body)
-	if len(string(Req1BodyBytes)) == 11 {
-		return true
-	}
-	return false
-}
-
-/*
-Revoke invate to users in Slack with email
-*/
-func delInvite(email string) bool {
-	revoke, _ := requests("GET", host+"/admin/invites", nil, "")
-	revokeBody, _ := ioutil.ReadAll(revoke.Body)
-	crumb := strings.Split(strings.SplitAfter(string(revokeBody), "boot_data.crumb_key = \"")[1], "\";")[0]
-	Deljson := strings.SplitAfter(strings.Split(string(revokeBody), "\",\"email\":\""+email)[0], "\"id\":\"")[2]
-	if len(Deljson) >= 8 && len(Deljson) <= 14 {
-		url := host + "/admin/invites?revoke=" + Deljson + "&" + crumb
-		requests("GET", url, nil, "")
-		return true
-	}
-	return false
+	return true
 }
 
 /*
 Delete users in Slack with email
 */
-func delUser(email string) bool {
-	body := bytes.NewBufferString("")
-	writer := multipart.NewWriter(body)
-	writer.WriteField("query", `{"type":"is","value":"user"}`)
-	writer.WriteField("sort", "email")
-	writer.WriteField("mode", "manual")
-	writer.WriteField("include_bots", "0")
-	writer.WriteField("exclude_slackbot", "true")
-	writer.WriteField("token", getoken())
-	writer.WriteField("set_active", "true")
-	writer.Close()
-	ConType := writer.FormDataContentType()
-	DelUser, _ := requests("POST", host+"/api/users.admin.fetchTeamUsers", body, ConType)
-	DelUserBodyBytes, _ := ioutil.ReadAll(DelUser.Body)
-	var slacks Slack
-	err := json.Unmarshal([]byte(DelUserBodyBytes), &slacks)
+func delUser(UserID string) bool {
+	err := api.DisableUser("users", UserID)
 	if err != nil {
 		return false
 	}
-	for _, value := range slacks.Items {
-		if value.Profile.Email == email {
-			body1 := bytes.NewBufferString("")
-			writer1 := multipart.NewWriter(body1)
-			writer1.WriteField("user", string(value.ID))
-			writer1.WriteField("token", getoken())
-			writer1.WriteField("set_active", "true")
-			writer1.Close()
-			ConType1 := writer1.FormDataContentType()
-			_, err := requests("POST", host+"/api/users.admin.setInactive", body1, ConType1)
-			if err != nil {
-				return false
-			}
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 /*
@@ -240,8 +177,8 @@ func GetUser(id string) (*slack.User, error) {
 	return user, err
 }
 
-// Gets the bot ID by looking for a user with a matching username as the one set in botname global variable.
-func GetID() (string, error) {
+// GetID the bot ID by looking for a user with a matching username as the one set in botname global variable.
+func GetID(username string) (string, error) {
 	users, err := api.GetUsers()
 
 	if err != nil {
@@ -256,7 +193,7 @@ func GetID() (string, error) {
 	}
 
 	for _, user := range users {
-		if user.Name == botname {
+		if user.Name == username {
 			return user.ID, nil
 		}
 
@@ -348,6 +285,11 @@ func StripMailTo(text string) string {
 	} else {
 		return text
 	}
+}
+
+// StripUserId Simple helper function to remove ID formatting from an string.
+func StripUserId(text string) string {
+	return strings.Split(strings.Split(text, "<@")[2], ">")[0]
 }
 
 /*
