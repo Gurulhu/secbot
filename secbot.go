@@ -40,6 +40,8 @@ var masteruser = os.Getenv("MASTER_USER")
 
 var slack_token, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("SLACK_TOKEN")))
 
+var credentialApp, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("CREDENTIAL_APP")))
+
 var First_Time = false
 
 // Reads the <slack_token> variable and creates a new Slack client, destroying the token afterwards.
@@ -74,6 +76,7 @@ func StartHandlers() {
 	ReadmeIOHandlerStart()
 	TinyLetterHandlerStart()
 	S3UploadHandlerStart()
+	TerminatorHandlerStart()
 }
 
 // Initializes the logger and sets logrus colors.

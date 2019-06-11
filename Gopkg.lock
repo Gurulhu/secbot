@@ -311,6 +311,12 @@
   revision = "425e5369a8f054f4f447f7c8ee1bf605f48425ab"
   version = "v6.2.11"
 
+[[projects]]
+  name = "github.com/360EntSecGroup-Skylar/excelize"
+  packages = ["."]
+  revision = "b1f632d4084130628f10906ff6a7bb55022e4c08"
+  version = "v2.0.0"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
@@ -334,6 +340,7 @@
     "golang.org/x/oauth2",
     "golang.org/x/sys/unix",
     "gopkg.in/olivere/elastic.v6",
+    "github.com/360EntSecGroup-Skylar/excelize",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
