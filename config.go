@@ -67,7 +67,8 @@ func Bootstrap() {
 	CREATE TABLE datatrack (id INTEGER NOT NULL PRIMARY KEY, module TEXT, name TEXT, section TEXT, value TEXT);
 	CREATE TABLE handlerconfig (id INTEGER NOT NULL PRIMARY KEY, handler TEXT, key TEXT, value TEXT);
 	CREATE TABLE externalcredentials (id INTEGER NOT NULL PRIMARY KEY, module TEXT, name TEXT, login TEXT, password TEXT);
-	CREATE TABLE terminated (id INTEGER NOT NULL PRIMARY KEY, email TEXT)
+	CREATE TABLE terminatedgim (id INTEGER NOT NULL PRIMARY KEY, email TEXT);
+	CREATE TABLE terminatedmetabase (id INTEGER NOT NULL PRIMARY KEY, email TEXT);
 	`
 		tx.Exec(sqlStmt)
 
@@ -438,10 +439,10 @@ func GetHome() string {
 	return usr.HomeDir
 }
 
-// TrackTerminated insert the terminated email
-func TrackTerminated(email string) (bool, error) {
+// TrackGIMTerminated insert the GIM terminated email
+func TrackGIMTerminated(email string) (bool, error) {
 
-	sqlStmt := "INSERT INTO terminated(email) VALUES (?)"
+	sqlStmt := "INSERT INTO terminatedgim(email) VALUES (?)"
 
 	p, err := db.Prepare(sqlStmt)
 
@@ -458,10 +459,55 @@ func TrackTerminated(email string) (bool, error) {
 	return true, nil
 }
 
-// ListTerminated retrieves all the terminated email
-func ListTerminated() (*[]string, error) {
+// ListGIMTerminated retrieves all the GIM terminated users email
+func ListGIMTerminated() (*[]string, error) {
 
-	selectStmt := "SELECT * FROM terminated"
+	selectStmt := "SELECT * FROM terminatedgim"
+
+	rows, err := db.Query(selectStmt)
+	defer rows.Close()
+
+	var data []string
+
+	for rows.Next() {
+		var id int
+		var d string
+
+		err = rows.Scan(&id, &d)
+		if err != nil {
+			return nil, err
+		}
+
+		data = append(data, d)
+	}
+
+	return &data, nil
+}
+
+// TrackMetabaseTerminated insert the Metabase terminated email
+func TrackMetabaseTerminated(email string) (bool, error) {
+
+	sqlStmt := "INSERT INTO terminatedmetabase(email) VALUES (?)"
+
+	p, err := db.Prepare(sqlStmt)
+
+	if err != nil {
+		return false, err
+	}
+
+	_, err = p.Exec(email)
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// ListMetabaseTerminated retrieves all the Metabase terminated users email
+func ListMetabaseTerminated() (*[]string, error) {
+
+	selectStmt := "SELECT * FROM terminatedmetabase"
 
 	rows, err := db.Query(selectStmt)
 	defer rows.Close()

@@ -239,21 +239,20 @@ func HandleGDriveFile() (*[]string, *[]string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	PostMessage(logs_channel, "Fetched files payload")
 
 	baseFile, err := FindBaseFile(payload)
 
 	if err != nil {
 		return nil, nil, err
 	}
-	PostMessage(logs_channel, fmt.Sprintf("Found file: %s", baseFile.Name))
+	PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Encontrou arquivo: %s", baseFile.Name))
 
 	downloadedFile, err := DownloadBaseFile(token, baseFile.ID)
 
 	if err != nil {
 		return nil, nil, err
 	}
-	PostMessage(logs_channel, fmt.Sprintf("Downloaded and will now parse file: %s", *downloadedFile))
+	PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Processando arquivo: %s", *downloadedFile))
 
 	emails, names, err := ParseBaseFile(*downloadedFile)
 
@@ -270,11 +269,11 @@ func HandleGDriveFile() (*[]string, *[]string, error) {
 	return emails, names, nil
 }
 
-// FindNotTerminated returns only not terminated emails
-func FindNotTerminated(emails *[]string) (*[]string, error) {
+// FindGIMNotTerminated returns only not terminated emails
+func FindGIMNotTerminated(emails *[]string) (*[]string, error) {
 
 	var notTerminated []string
-	alreadyTerminated, err := ListTerminated()
+	alreadyTerminated, err := ListGIMTerminated()
 
 	if err != nil {
 		return nil, err
