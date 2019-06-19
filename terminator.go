@@ -2,6 +2,7 @@ package secbot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +19,6 @@ func TerminatorHandlerStart() {
 
 // Terminate handle the terminations of inactive users
 func Terminate() {
-	var terminatedUsers, notTerminatedUsers, terminatedNotInserted []string
 
 	for {
 		emails, _, err := HandleGDriveFile()
@@ -31,48 +31,136 @@ func Terminate() {
 				"error":  err.Error(),
 			}).Error("Error handling the GDrive file")
 
+			PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Erro ao processar arquivo: %s", err.Error()))
 		} else {
-			PostMessage(logs_channel, fmt.Sprintf("Will now terminate the inactive users"))
-			notTerminated, err := FindNotTerminated(emails)
+			TerminateGIMUsers(emails)
+			err := TerminateMetabaseUsers(emails)
 
 			if err != nil {
-				PostMessage(logs_channel, err.Error())
+				PostMessage(logs_channel, fmt.Sprintf("[METABASE] Erro ao executar rotina de desativação de usuários: %s", err.Error()))
+			}
+		}
+		time.Sleep(86400 * time.Second)
+	}
+}
+
+// TerminateGIMUsers terminate GIM Users using its REST API
+func TerminateGIMUsers(emails *[]string) {
+
+	var terminatedUsers, notTerminatedUsers, terminatedNotInserted []string
+
+	notTerminated, err := FindGIMNotTerminated(emails)
+
+	if err != nil {
+		PostMessage(logs_channel, err.Error())
+
+		logger.WithFields(logrus.Fields{
+			"prefix": "FindGIMNotTerminated",
+			"error":  err.Error(),
+		}).Error("Error obtaining GIM users to terminate")
+	} else {
+
+		for _, email := range *notTerminated {
+			_, err := GIMDeactivateUser(email)
+
+			if err != nil {
+				notTerminatedUsers = append(notTerminatedUsers, email)
 
 				logger.WithFields(logrus.Fields{
-					"prefix": "FindNotTerminated",
+					"prefix": "GIMDeactivateUser",
 					"error":  err.Error(),
-				}).Error("Error obtaining users to terminate")
+				}).Error(fmt.Sprintf("Error terminating user %s", email))
 			} else {
+				terminatedUsers = append(terminatedUsers, email)
 
-				for _, email := range *notTerminated {
-					_, err := GIMDeactivateUser(email)
+				_, err := TrackGIMTerminated(email)
 
-					if err != nil {
-						notTerminatedUsers = append(notTerminatedUsers, email)
+				if err != nil {
+					terminatedNotInserted = append(terminatedNotInserted, email)
+				}
+			}
+		}
+		TerminateNotifyChannel("GIM", terminatedUsers, terminatedNotInserted, notTerminatedUsers)
+	}
+}
 
-						logger.WithFields(logrus.Fields{
-							"prefix": "GIMDeactivateUser",
-							"error":  err.Error(),
-						}).Error(fmt.Sprintf("Error terminating user %s", email))
-					} else {
-						terminatedUsers = append(terminatedUsers, email)
+// TerminateMetabaseUsers terminate Metabase Users using its REST API
+func TerminateMetabaseUsers(emails *[]string) error {
 
-						_, err := TrackTerminated(email)
+	var terminatedUsers, notTerminatedUsers, terminatedNotInserted []string
 
-						if err != nil {
-							terminatedNotInserted = append(terminatedNotInserted, email)
-						}
-					}
+	notTerminated, err := FindMetabaseNotTerminated(emails)
+
+	if err != nil {
+		PostMessage(logs_channel, err.Error())
+
+		logger.WithFields(logrus.Fields{
+			"prefix": "FindMetabaseNotTerminated",
+			"error":  err.Error(),
+		}).Error("Error obtaining Metabase users to terminate")
+	} else {
+		token, err := ObtainMetabaseToken()
+
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"prefix": "ObtainMetabaseToken",
+				"error":  err.Error(),
+			}).Error("Error refreshing Metabase token")
+
+			return err
+		}
+		users, err := ObtainMetabaseUsers(*token)
+
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"prefix": "ObtainMetabaseUsers",
+				"error":  err.Error(),
+			}).Error("Error obtaining Metabase users")
+
+			return err
+		}
+		usersMap, err := FindMetabaseNotTerminatedID(notTerminated, *users)
+
+		for email, id := range usersMap {
+			_, err = DeactivateMetabaseUser(strconv.Itoa(id), *token)
+
+			if err != nil {
+				notTerminatedUsers = append(notTerminatedUsers, email)
+
+				logger.WithFields(logrus.Fields{
+					"prefix": "DeactivateMetabaseUser",
+					"error":  err.Error(),
+				}).Error(fmt.Sprintf("Error terminating user %s", email))
+			} else {
+				terminatedUsers = append(terminatedUsers, email)
+
+				_, err := TrackMetabaseTerminated(email)
+
+				if err != nil {
+					terminatedNotInserted = append(terminatedNotInserted, email)
 				}
 			}
 		}
 
-		PostMessage(logs_channel, fmt.Sprintf("[TERMINATOR] Usuários não desativados por motivo de erro : %s", strings.Join(notTerminatedUsers, " ")))
-		PostMessage(logs_channel, fmt.Sprintf("[TERMINATOR] Usuários desativados e não registrados no banco de dados : %s", strings.Join(terminatedNotInserted, " ")))
-		PostMessage(logs_channel, fmt.Sprintf("[TERMINATOR] Usuários desativados e registrados no banco de dados: %s", strings.Join(terminatedUsers, " ")))
+		TerminateNotifyChannel("METABASE", terminatedUsers, terminatedNotInserted, notTerminatedUsers)
+	}
+	return nil
+}
 
-		notTerminatedUsers, terminatedNotInserted, terminatedUsers = nil, nil, nil
+// TerminateNotifyChannel Notifies the channel after the tasks are done
+func TerminateNotifyChannel(application string, terminated []string, notInserted []string, notTerminated []string) {
 
-		time.Sleep(86400 * time.Second)
+	if len(terminated) > 0 {
+		PostMessage(logs_channel, fmt.Sprintf("@here [%s] Usuários desativados: %s", application, strings.Join(terminated, " ")))
+	} else {
+		PostMessage(logs_channel, fmt.Sprintf("[%s] Nenhum usuário pendente de desativação", application))
+	}
+
+	if len(notInserted) > 0 {
+		PostMessage(logs_channel, fmt.Sprintf("[%s] Usuários desativados e não registrados no banco de dados: %s", application, strings.Join(notInserted, " ")))
+	}
+
+	if len(notTerminated) > 0 {
+		PostMessage(logs_channel, fmt.Sprintf("[%s] Usuários não desativados por motivo de erro: %s", application, strings.Join(notTerminated, " ")))
 	}
 }

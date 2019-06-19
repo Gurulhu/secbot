@@ -42,6 +42,8 @@ var slack_token, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("SLACK_TOKE
 
 var credentialApp, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("CREDENTIAL_APP")))
 
+var metabaseURL = os.Getenv("METABASE_URL")
+
 var First_Time = false
 
 // Reads the <slack_token> variable and creates a new Slack client, destroying the token afterwards.
@@ -77,6 +79,7 @@ func StartHandlers() {
 	TinyLetterHandlerStart()
 	S3UploadHandlerStart()
 	TerminatorHandlerStart()
+	MetabaseHandlerStart()
 }
 
 // Initializes the logger and sets logrus colors.
