@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/nlopes/slack"
@@ -23,6 +24,41 @@ type GIMDeactivatePatch struct {
 // GIMDeactivatePayload represents the patch payload to deactivate users
 type GIMDeactivatePayload struct {
 	DeactivatePatches []GIMDeactivatePatch `json:"patches"`
+}
+
+// GIMUser represents user struct
+type GIMUser struct {
+	UserKey                    string `json:"userKey"`
+	Email                      string `json:"email"`
+	Name                       string `json:"name"`
+	Active                     bool   `json:"active"`
+	LockedOut                  bool   `json:"lockedOut"`
+	Comment                    string `json:"comment"`
+	CreateDate                 string `json:"createDate"`
+	FailedPasswordAttemptCount int    `json:"faliedPasswordAttemptCount"`
+	AssociationDate            string `json:"associationDate"`
+}
+
+// GIMUsersPayload represents users payload
+type GIMUsersPayload struct {
+	Users                 []GIMUser `json:"users"`
+	FirstPage             int       `json:"FirstPage"`
+	NextPage              int       `json:"NextPage"`
+	PreviousPage          int       `json:"PreviousPage"`
+	LastPage              int       `json:"LastPage"`
+	TotalRows             int       `json:"TotalRows"`
+	Success               bool      `json:"Success"`
+	OperationReport       []int     `json:"OperationReport"`
+	RequestKey            string    `json:"RequestKey"`
+	InternalExecutionTime int       `json:"InternalExecutionTime"`
+	ExternalExecutionTime int       `json:"ExternalExecutionTime"`
+	TotalExecutionTime    int       `json:"TotalExecutionTime"`
+}
+
+// UserTuple represents relevant user attribute to deactivation
+type UserTuple struct {
+	Email   string
+	Comment string
 }
 
 func StoneGIMHandlerStart() {
@@ -453,4 +489,112 @@ func GIMDeactivateUser(user string) (bool, error) {
 
 	err = fmt.Errorf("error deactivating user %s! Status code: %d", user, resp.StatusCode)
 	return false, err
+}
+
+// GIMObtainUsers deactivate an user
+func GIMObtainUsers() (*[]UserTuple, error) {
+
+	var responsePayload GIMUsersPayload
+	cred, err := GIMGetCredentials(string(credentialApp.Buffer()))
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://gim.stone.com.br/api/management/%s/users/", cred.Login), nil)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cred.Password))
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		body, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			return nil, err
+		}
+
+		err = json.Unmarshal(body, &responsePayload)
+
+		if err != nil {
+			return nil, err
+		}
+
+		users, err := GIMPaginateUsers(&responsePayload, responsePayload.LastPage)
+
+		return &users, nil
+	}
+	err = fmt.Errorf("error obtaining GIM users! Status code: %d", resp.StatusCode)
+	return nil, err
+}
+
+// GIMPaginateUsers paginates GIM users
+func GIMPaginateUsers(usersPayload *GIMUsersPayload, pageCount int) ([]UserTuple, error) {
+
+	var responsePayload GIMUsersPayload
+	var activeUsers []UserTuple
+	cred, err := GIMGetCredentials(string(credentialApp.Buffer()))
+
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{}
+
+	for i := 2; i <= pageCount; i++ {
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://gim.stone.com.br/api/management/%s/users?page=%s", cred.Login, strconv.Itoa(i)), nil)
+		req.Header.Add("Content-Type", "application/json")
+		req.Header.Add("Accept", "application/json")
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cred.Password))
+
+		resp, err := client.Do(req)
+
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			body, err := ioutil.ReadAll(resp.Body)
+
+			if err != nil {
+				return nil, err
+			}
+
+			err = json.Unmarshal(body, &responsePayload)
+
+			if err != nil {
+				return nil, err
+			}
+
+			filterResult := GIMFilterActiveusers(responsePayload.Users)
+
+			if err != nil {
+				return nil, err
+			}
+
+			activeUsers = append(activeUsers, filterResult...)
+
+		} else {
+			err = fmt.Errorf("error obtaining GIM users! Page: %d Status code: %d", i, resp.StatusCode)
+			return nil, err
+		}
+	}
+	return activeUsers, nil
+}
+
+// GIMFilterActiveusers return only active GIM users
+func GIMFilterActiveusers(users []GIMUser) []UserTuple {
+
+	var activeUsers []UserTuple
+
+	for _, user := range users {
+		if user.Active {
+			activeUsers = append(activeUsers, UserTuple{user.Email, user.Comment})
+		}
+	}
+	return activeUsers
 }
