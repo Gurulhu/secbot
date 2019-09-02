@@ -2,6 +2,7 @@ package secbot
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,11 @@ func TerminatorHandlerStart() {
 func Terminate() {
 
 	for {
-		emails, _, err := HandleGDriveFile()
+		users, err := HandleGDriveFile()
+		emails := make([]string, 0, len(*users))
+		for e := range *users {
+			emails = append(emails, e)
+		}
 
 		if err != nil {
 			PostMessage(logs_channel, err.Error())
@@ -33,8 +38,8 @@ func Terminate() {
 
 			PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Erro ao processar arquivo: %s", err.Error()))
 		} else {
-			TerminateGIMUsers(emails)
-			err := TerminateMetabaseUsers(emails)
+			TerminateGIMUsers(users)
+			err := TerminateMetabaseUsers(&emails)
 
 			if err != nil {
 				PostMessage(logs_channel, fmt.Sprintf("[METABASE] Erro ao executar rotina de desativação de usuários: %s", err.Error()))
@@ -45,42 +50,59 @@ func Terminate() {
 }
 
 // TerminateGIMUsers terminate GIM Users using its REST API
-func TerminateGIMUsers(emails *[]string) {
+func TerminateGIMUsers(users *map[string]string) {
 
 	var terminatedUsers, notTerminatedUsers, terminatedNotInserted []string
 
-	notTerminated, err := FindGIMNotTerminated(emails)
+	emails := make([]string, 0, len(*users))
+	for e := range *users {
+		emails = append(emails, e)
+	}
+
+	gimUsers, err := GIMObtainUsers()
 
 	if err != nil {
 		PostMessage(logs_channel, err.Error())
 
 		logger.WithFields(logrus.Fields{
-			"prefix": "FindGIMNotTerminated",
+			"prefix": "GIMObtainUsers",
 			"error":  err.Error(),
-		}).Error("Error obtaining GIM users to terminate")
+		}).Error("Error obtaining GIM users from API")
 	} else {
+		notTerminatedAlready, err := FindGIMNotTerminated(&emails)
+		notTerminated := obtainCPFAssociatedEmails(*users, notTerminatedAlready, gimUsers)
 
-		for _, email := range *notTerminated {
-			_, err := GIMDeactivateUser(email)
+		if err != nil {
+			PostMessage(logs_channel, err.Error())
 
-			if err != nil {
-				notTerminatedUsers = append(notTerminatedUsers, email)
+			logger.WithFields(logrus.Fields{
+				"prefix": "FindGIMNotTerminated",
+				"error":  err.Error(),
+			}).Error("Error obtaining GIM users from database")
+		} else {
 
-				logger.WithFields(logrus.Fields{
-					"prefix": "GIMDeactivateUser",
-					"error":  err.Error(),
-				}).Error(fmt.Sprintf("Error terminating user %s", email))
-			} else {
-				terminatedUsers = append(terminatedUsers, email)
-
-				_, err := TrackGIMTerminated(email)
+			for _, email := range notTerminated {
+				_, err := GIMDeactivateUser(email)
 
 				if err != nil {
-					terminatedNotInserted = append(terminatedNotInserted, email)
+					notTerminatedUsers = append(notTerminatedUsers, email)
+
+					logger.WithFields(logrus.Fields{
+						"prefix": "GIMDeactivateUser",
+						"error":  err.Error(),
+					}).Error(fmt.Sprintf("Error terminating user %s", email))
+				} else {
+					terminatedUsers = append(terminatedUsers, email)
+
+					_, err := TrackGIMTerminated(email)
+
+					if err != nil {
+						terminatedNotInserted = append(terminatedNotInserted, email)
+					}
 				}
 			}
+			TerminateNotifyChannel("GIM", terminatedUsers, terminatedNotInserted, notTerminatedUsers)
 		}
-		TerminateNotifyChannel("GIM", terminatedUsers, terminatedNotInserted, notTerminatedUsers)
 	}
 }
 
@@ -163,4 +185,27 @@ func TerminateNotifyChannel(application string, terminated []string, notInserted
 	if len(notTerminated) > 0 {
 		PostMessage(logs_channel, fmt.Sprintf("[%s] Usuários não desativados por motivo de erro: %s", application, strings.Join(notTerminated, " ")))
 	}
+}
+
+func obtainCPFAssociatedEmails(users map[string]string, notTerminated *[]string, gimUsers *[]UserTuple) []string {
+
+	var notTerminatedCPFs []string
+	var notTerminatedEmails []string
+	reg, _ := regexp.Compile("[^0-9]+")
+
+	for _, email := range *notTerminated {
+		sanitizedCPF := reg.ReplaceAllString(users[email], "")
+		if len(sanitizedCPF) > 0 {
+			notTerminatedCPFs = append(notTerminatedCPFs, sanitizedCPF)
+		}
+	}
+
+	for _, cpf := range notTerminatedCPFs {
+		for _, user := range *gimUsers {
+			if strings.Contains(user.Comment, cpf) {
+				notTerminatedEmails = append(notTerminatedEmails, user.Email)
+			}
+		}
+	}
+	return notTerminatedEmails
 }

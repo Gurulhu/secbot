@@ -187,86 +187,83 @@ func DownloadBaseFile(token *string, fileID string) (*string, error) {
 }
 
 // ParseBaseFile parses the xlsx file
-func ParseBaseFile(fileName string) (*[]string, *[]string, error) {
+func ParseBaseFile(fileName string) (*map[string]string, error) {
 	const Name = 1
 	const Status = 4
 	const Email = 12
-	var emails []string
-	var names []string
+	const CPF = 13
+	var users = make(map[string]string)
 
 	f, err := excelize.OpenFile(fileName)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	rows, err := f.Rows("Gera Arquivo")
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		row, err := rows.Columns()
 
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		if row[Status] == "INATIVO" {
-			if row[Email] == "" {
-				names = append(names, row[Name])
-			} else {
-				emails = append(emails, row[Email])
+			if row[Email] != "" {
+				users[row[Email]] = row[CPF]
 			}
 		}
 	}
-
-	return &emails, &names, nil
+	return &users, nil
 }
 
 // HandleGDriveFile handles the .xlsx file containing the users
-func HandleGDriveFile() (*[]string, *[]string, error) {
+func HandleGDriveFile() (*map[string]string, error) {
 
 	token, err := RefreshToken()
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	payload, err := GetFilesPayload(token)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	baseFile, err := FindBaseFile(payload)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Encontrou arquivo: %s", baseFile.Name))
 
 	downloadedFile, err := DownloadBaseFile(token, baseFile.ID)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	PostMessage(logs_channel, fmt.Sprintf("[GOOGLE DRIVE] Processando arquivo: %s", *downloadedFile))
 
-	emails, names, err := ParseBaseFile(*downloadedFile)
+	users, err := ParseBaseFile(*downloadedFile)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = os.Remove(*downloadedFile)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return emails, names, nil
+	return users, nil
 }
 
 // FindGIMNotTerminated returns only not terminated emails
