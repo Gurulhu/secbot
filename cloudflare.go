@@ -21,7 +21,7 @@ var apiEmail, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("CLOUDFLARE_AP
 /*
 api - return the client to connect to Cloudflare
 */
-func api() (*cloudflare.API, error) {
+func apiCloudflare() (*cloudflare.API, error) {
 	if zoneID == nil || apiKey == nil || apiEmail == nil {
 		err := fmt.Errorf("error loading Cloudflare credentials")
 		return nil, err
@@ -43,7 +43,7 @@ func api() (*cloudflare.API, error) {
 createOrUpdateFilter - create or update an existing filter into Cloudflare API
 */
 func createOrUpdateFilter(filter cloudflare.Filter) (*string, error) {
-	cf, err := api()
+	cf, err := apiCloudflare()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func createOrUpdateFilter(filter cloudflare.Filter) (*string, error) {
 getFilter - retrieve the filter from the Cloudflare API
 */
 func getFilter() (*cloudflare.Filter, error) {
-	cf, err := api()
+	cf, err := apiCloudflare()
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func getFilter() (*cloudflare.Filter, error) {
 createOrUpdateFirewallRule - create or update an existing firewall rule into Cloudflare API
 */
 func createOrUpdateFirewallRule(rule cloudflare.FirewallRule) error {
-	cf, err := api()
+	cf, err := apiCloudflare()
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func createOrUpdateFirewallRule(rule cloudflare.FirewallRule) error {
 getFirewallRule - retrieve the firewall rule from the Cloudflare API
 */
 func getFirewallRule() (*cloudflare.FirewallRule, error) {
-	cf, err := api()
+	cf, err := apiCloudflare()
 	if err != nil {
 		return nil, err
 	}
