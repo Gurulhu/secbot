@@ -205,7 +205,7 @@ func addIP(source string, newIP string) ([]string, bool) {
 	ips := extractIPs(source)
 
 	// check if IP exists
-	for i, value := range ips {
+	for _, value := range ips {
 		if value == newIP {
 			existingIP = true
 			break

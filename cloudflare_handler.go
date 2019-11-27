@@ -23,7 +23,7 @@ func CFHandlerStart() {
 		Regex:              regexp.MustCompile("cf (?P<command>block) (?P<addresses>(?:\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/\\d{1,2}\\s?)+)"),
 		Help:               "Bloqueia IPs no WAF",
 		Usage:              "cf block <addresses>",
-		Handler:            WAFBlockCommand,
+		Handler:            CFBlockCommand,
 		RequiredPermission: "cf",
 		HandlerName:        "cf",
 		Parameters: map[string]string{
@@ -34,7 +34,7 @@ func CFHandlerStart() {
 		Regex:              regexp.MustCompile("cf (?P<command>unblock) (?P<addresses>(?:\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/\\d{1,2}\\s?)+)"),
 		Help:               "Desbloqueia IPs no WAF",
 		Usage:              "cf unblock <addresses>",
-		Handler:            WAFUnblockCommand,
+		Handler:            CFUnblockCommand,
 		RequiredPermission: "cf",
 		HandlerName:        "cf",
 		Parameters: map[string]string{
@@ -58,7 +58,7 @@ Usage
  waf list
 */
 
-func WAFListCommand(md map[string]string, ev *slack.MessageEvent) {
+func CFListCommand(md map[string]string, ev *slack.MessageEvent) {
 
 	ips, err := CloudflareListBlockedIPs()
 
@@ -95,8 +95,8 @@ Usage
 
  waf <account> <region> block <addresses>
 */
-func WAFBlockCommand(md map[string]string, ev *slack.MessageEvent) {
-	ips, error := CloudflareListBlockedIPs()
+func CFBlockCommand(md map[string]string, ev *slack.MessageEvent) {
+	ips, _ := CloudflareListBlockedIPs()
 
 	var existingIPs []string
 	var nonExistingIps []string
@@ -149,8 +149,8 @@ Usage
 
  waf <account> <region> unblock <addresses>
 */
-func WAFUnblockCommand(md map[string]string, ev *slack.MessageEvent) {
-	ips, error := CloudflareListBlockedIPs()
+func CFUnblockCommand(md map[string]string, ev *slack.MessageEvent) {
+	ips, _ := CloudflareListBlockedIPs()
 
 	var existingIPs []string
 	var nonExistingIps []string
