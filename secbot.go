@@ -80,6 +80,7 @@ func StartHandlers() {
 	S3UploadHandlerStart()
 	TerminatorHandlerStart()
 	MetabaseHandlerStart()
+	CFHandlerStart()
 }
 
 // Initializes the logger and sets logrus colors.
