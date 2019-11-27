@@ -150,32 +150,29 @@ Usage
  waf <account> <region> unblock <addresses>
 */
 func CFUnblockCommand(md map[string]string, ev *slack.MessageEvent) {
-	ips, _ := CloudflareListBlockedIPs()
+	var unblockedIPs []string
+	var notFoundIPs []string
 
-	var existingIPs []string
-	var nonExistingIps []string
-	for _, v := range strings.Split(md["addresses"], " ") {
-		if !stringInSlice(v, ips) {
-			var ip = v
+	for _, ip := range strings.Split(md["addresses"], " ") {
+		unblocked, err := CloudflareUnblockIP(ip)
+		if err != nil {
+			PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro ao desbloquear os IPs: %s", ev.Username, err.Error()))
+			return
+		}
 
-			existingIP, err := CloudflareUnblockIP(v)
-			if err != nil {
-				PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro ao bloquear os IPs: %s", ev.Username, err.Error()))
-				return
-			}
-
-			if existingIP {
-				existingIPs = append(existingIPs, ip)
-			} else {
-				nonExistingIps = append(nonExistingIps, ip)
-			}
+		if unblocked {
+			unblockedIPs = append(unblockedIPs, ip)
+		} else {
+			notFoundIPs = append(notFoundIPs, ip)
 		}
 	}
 
-	if len(nonExistingIps) == 0 {
-		PostMessage(ev.Channel, fmt.Sprintf("@%s Nenhum dos IPs listados se encontram bloqueados", ev.Username))
-		return
+	if len(notFoundIPs) > 0 {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs não foram encontrados: %s", ev.Username, strings.Join(notFoundIPs, " ")))
 	}
 
-	PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs estavam listados e foram desbloqueados: %s", ev.Username, strings.Join(existingIPs, " ")))
+	if len(unblockedIPs) > 0 {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs estavam listados e foram desbloqueados: %s", ev.Username, strings.Join(unblockedIPs, " ")))
+	}
+	return
 }
