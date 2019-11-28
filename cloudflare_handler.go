@@ -24,7 +24,7 @@ func CFHandlerStart() {
 		Help:               "Bloqueia IPs no WAF",
 		Usage:              "cf block <addresses>",
 		Handler:            CFBlockCommand,
-		RequiredPermission: "cf",
+		RequiredPermission: "waf",
 		HandlerName:        "cf",
 		Parameters: map[string]string{
 			"addresses": "(?:\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/\\d{1,2}\\s?)+)",
@@ -35,7 +35,7 @@ func CFHandlerStart() {
 		Help:               "Desbloqueia IPs no WAF",
 		Usage:              "cf unblock <addresses>",
 		Handler:            CFUnblockCommand,
-		RequiredPermission: "cf",
+		RequiredPermission: "waf",
 		HandlerName:        "cf",
 		Parameters: map[string]string{
 			"addresses": "(?:\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/\\d{1,2}\\s?)+)",
