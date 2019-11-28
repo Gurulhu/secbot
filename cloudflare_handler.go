@@ -96,34 +96,31 @@ Usage
  waf <account> <region> block <addresses>
 */
 func CFBlockCommand(md map[string]string, ev *slack.MessageEvent) {
-	ips, _ := CloudflareListBlockedIPs()
+	var blockedIPs []string
+	var alreadyBlockedIPs []string
 
-	var existingIPs []string
-	var nonExistingIps []string
-	for _, v := range strings.Split(md["addresses"], " ") {
-		if !stringInSlice(v, ips) {
-			var ip = v
+	for _, ip := range strings.Split(md["addresses"], " ") {
+		blocked, err := CloudflareBlockIP(ip)
+		if err != nil {
+			PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro ao bloquear os IPs: %s", ev.Username, err.Error()))
+			return
+		}
 
-			existingIP, err := CloudflareBlockIP(v)
-			if err != nil {
-				PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro ao bloquear os IPs: %s", ev.Username, err.Error()))
-				return
-			}
-
-			if existingIP {
-				existingIPs = append(existingIPs, ip)
-			} else {
-				nonExistingIps = append(nonExistingIps, ip)
-			}
+		if blocked {
+			blockedIPs = append(unblockedIPs, ip)
+		} else {
+			alreadyBlockedIPs = append(notFoundIPs, ip)
 		}
 	}
 
-	if len(existingIPs) == 0 {
-		PostMessage(ev.Channel, fmt.Sprintf("@%s Todos os IPs listados já se encontram bloqueados", ev.Username))
-		return
+	if len(alreadyBlockedIPs) > 0 {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs já estavam bloqueados: %s", ev.Username, strings.Join(alreadyBlockedIPs, " ")))
 	}
 
-	PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs não estavam listados e foram bloqueados: %s", ev.Username, strings.Join(nonExistingIps, " ")))
+	if len(blockedIPs) > 0 {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Os seguintes IPs foram bloqueados: %s", ev.Username, strings.Join(blockedIPs, " ")))
+	}
+	return
 }
 
 /*
