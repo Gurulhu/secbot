@@ -100,16 +100,16 @@ func CFBlockCommand(md map[string]string, ev *slack.MessageEvent) {
 	var alreadyBlockedIPs []string
 
 	for _, ip := range strings.Split(md["addresses"], " ") {
-		blocked, err := CloudflareBlockIP(ip)
+		alreadyBlocked, err := CloudflareBlockIP(ip)
 		if err != nil {
 			PostMessage(ev.Channel, fmt.Sprintf("@%s Ocorreu um erro ao bloquear os IPs: %s", ev.Username, err.Error()))
 			return
 		}
 
-		if blocked {
-			blockedIPs = append(unblockedIPs, ip)
+		if alreadyBlocked {
+			alreadyBlockedIPs = append(alreadyBlockedIPs, ip)
 		} else {
-			alreadyBlockedIPs = append(notFoundIPs, ip)
+			blockedIPs = append(blockedIPs, ip)
 		}
 	}
 
