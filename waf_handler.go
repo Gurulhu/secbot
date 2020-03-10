@@ -29,7 +29,7 @@ func WAFHandlerStart() {
 	AddCommand(Command{
 		Regex:       regexp.MustCompile("waf (?P<command>list ipset$)"),
 		Help:        "Lista os IPs bloqueados no WAF",
-		Usage:       "waf list",
+		Usage:       "waf list ipset",
 		Handler:     WAFListCommand,
 		HandlerName: "waf"})
 
