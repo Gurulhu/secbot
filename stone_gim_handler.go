@@ -11,7 +11,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/awnumar/memguard"
 	"github.com/nlopes/slack"
+	"github.com/pagarme/gimclient"
+	sendgrid "github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
 
 // GIMDeactivatePatch represents a patch to deactivate users
@@ -93,6 +97,31 @@ func StoneGIMHandlerStart() {
 		HandlerName:        "gim",
 		Parameters: map[string]string{
 			"users": ".*",
+		}})
+
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("gim (?P<command>delete) (?P<users>.*)"),
+		Help:               "Desativa os <users> na aplicação <application>",
+		Usage:              "gim delete <users>",
+		Handler:            gimDeleteCommand,
+		RequiredPermission: "gim",
+		HandlerName:        "gim",
+		Parameters: map[string]string{
+			"users": ".*",
+		}})
+
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("gim (?P<command>invite) (?P<role>\\S+) (?P<users>\\S+) (?P<cpf>\\S+) (?P<name>.*)"),
+		Help:               "Cadastra o <users> na aplicação <application>",
+		Usage:              "gim invite <role> <users> <cpf> <name>",
+		Handler:            gimInviteCommand,
+		RequiredPermission: "gim",
+		HandlerName:        "gim",
+		Parameters: map[string]string{
+			"role":  "\\S+",
+			"users": "\\S+",
+			"cpf":   "\\S+",
+			"name":  ".*",
 		}})
 
 	AddCommand(Command{
@@ -448,6 +477,57 @@ func GIMSetApplicationCommand(md map[string]string, ev *slack.MessageEvent) {
 
 }
 
+func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, _ := GIMValidateApplication(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma aplicação especificada e aplicação padrão não configurada\n"+
+			"Utilize `gim set default application <application>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	var users []string
+
+	for _, v := range strings.Split(md["users"], " ") {
+		users = append(users, StripMailTo(v))
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("@%s Desativando os seguintes usuários: %s", ev.Username, strings.Join(users, " ")))
+
+	var desactive []string
+
+	var failed []GenericError
+
+	for _, user := range users {
+		status, err := GIMDeactivateUser(user)
+
+		if !status {
+			failed = append(failed, GenericError{Key: user,
+				Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: %s",
+					err.Error())})
+			continue
+		}
+
+		desactive = append(desactive, user)
+	}
+
+	var msg = fmt.Sprintf("@%s *### Resultado ###*\n", ev.Username)
+
+	if len(desactive) > 0 {
+		msg += fmt.Sprintf("*Usuários Desativados*\n%s", strings.Join(desactive, " "))
+	}
+	if len(failed) > 0 {
+		msg += fmt.Sprintf("*Erros*\n")
+		for _, v := range failed {
+			msg += fmt.Sprintf("%s - `%s`\n", v.Key, v.Error)
+		}
+	}
+
+	PostMessage(ev.Channel, msg)
+}
+
 // GIMDeactivateUser deactivate an user
 func GIMDeactivateUser(user string) (bool, error) {
 
@@ -597,4 +677,107 @@ func GIMFilterActiveusers(users []GIMUser) []UserTuple {
 		}
 	}
 	return activeUsers
+}
+
+func gimInviteCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, _ := GIMValidateApplication(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma aplicação especificada e aplicação padrão não configurada\n"+
+			"Utilize `gim set default application <application>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	role := md["role"]
+	users := StripMailTo(md["users"])
+	cpf := md["cpf"]
+	name := md["name"]
+
+	roles := []string{"standard", "readonly", "financial_admin", "admin"}
+
+	PostMessage(ev.Channel, role+"\n"+users+"\n"+cpf+"\n"+name)
+
+	if !stringInSlice(role, roles) {
+		PostMessage(ev.Channel, "Role "+role+" inválida")
+		return
+	}
+
+	status, _ := giminviteusers(name, users, cpf, role)
+
+	if !status {
+		PostMessage(ev.Channel, "Ocorreu um erro ao cadastrar o usuário: "+users)
+		return
+	}
+
+	PostMessage(ev.Channel, "Usuário "+users+" cadastrado com sucesso")
+}
+
+func giminviteusers(name string, email string, cpf string, role string) (bool, error) {
+	cred, err := GIMGetCredentials(string(credentialApp.Buffer()))
+	apiKey, _ := memguard.NewImmutableFromBytes([]byte(cred.Password))
+	appKey, _ := memguard.NewImmutableFromBytes([]byte(cred.Login))
+
+	client := gimclient.NewClient(apiKey, appKey)
+	resp, err := client.GetUser(email)
+
+	// Check if user already exists
+	checkUser, err := handleResponse(resp.StatusCode, err, 400, "User not found, you may proceed")
+	if !checkUser {
+		return false, err
+	}
+
+	// Generate secret
+	secret := client.GenerateSecret()
+
+	// Secret Decoded
+	decsecret := client.DecodeSecret(secret)
+	// Add user to app
+	fmt.Println("\nAdding user to app...")
+	resp, err = client.AddUserToApp(email, name, decsecret, cpf)
+	checkAdd, _ := handleResponse(resp.StatusCode, err, 201, "User created")
+	if !checkAdd {
+		return false, err
+	}
+
+	// Add role to user
+	fmt.Println("\nAdding role to user...")
+	resp, err = client.AddRoleToUser(email, name, role)
+	checkRole, _ := handleResponse(resp.StatusCode, err, 200, "Role "+role+" added successfully")
+	if !checkRole {
+		return false, err
+	}
+
+	// Requesting email send by sendgrid
+	from := mail.NewEmail("Secbot", "secbot@pagar.me")
+	subject := "Pagar.me - Acesso Dashboard Admin 2FA"
+	to := mail.NewEmail("", strings.TrimSuffix(email, "\n"))
+	plainTextContent := "and easy to do anywhere, even with Go"
+	linkQRCode := "https://www.google.com/chart?chs=250x250&chld=M|0&cht=qr&chl=otpauth://totp/Dashboard%20Admin:" + strings.TrimSuffix(email, "\n") + "?secret=" + secret + "&issuer=Pagarme"
+	htmlContent := "<strong><br>Bem vindo a Dash Admin<br></strong>Faça o download do Authy, crie uma nova conta e escaneie QRcode abaixo ou insira manualmente o código <strong>" + secret + "</strong><br><img width=\"250\" height=\"250\" src=\"" + linkQRCode + "\"><br><br><br>Security Team - Pagar.me"
+	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
+	sgclient := sendgrid.NewSendClient(string(Sendkey.Buffer()))
+	response, err := sgclient.Send(message)
+	checkSend, _ := handleResponse(response.StatusCode, err, 202, " Email send requested (sendgrid)\n")
+	if !checkSend {
+		return false, err
+	}
+	defer memguard.DestroyAll()
+	return true, nil
+}
+
+func handleResponse(statusCode int, err error, successCode int, successMessage string) (bool, error) {
+
+	if err != nil {
+		fmt.Println("Errored when sending request to the server")
+		return false, err
+	} else if statusCode == successCode {
+		fmt.Printf("%v!", successMessage)
+		return false, nil
+	} else {
+		fmt.Println("Request failed!")
+		fmt.Println(statusCode)
+		return false, err
+	}
 }
