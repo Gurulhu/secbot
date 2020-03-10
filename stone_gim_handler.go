@@ -112,7 +112,7 @@ func StoneGIMHandlerStart() {
 
 	AddCommand(Command{
 		Regex:              regexp.MustCompile("gim (?P<command>invite) (?P<role>\\S+) (?P<users>\\S+) (?P<cpf>\\S+) (?P<name>.*)"),
-		Help:               "Cadastra o <users> na aplicação <application>",
+		Help:               "Cadastra o <users> na aplicação <application>\n Roles: standard, readonly, financial_admin, admin",
 		Usage:              "gim invite <role> <users> <cpf> <name>",
 		Handler:            gimInviteCommand,
 		RequiredPermission: "gim",
@@ -690,10 +690,10 @@ func gimInviteCommand(md map[string]string, ev *slack.MessageEvent) {
 		return
 	}
 
-	role := md["role"]
+	role := strings.TrimSpace(md["role"])
 	users := StripMailTo(md["users"])
-	cpf := md["cpf"]
-	name := md["name"]
+	cpf := strings.TrimSpace(md["cpf"])
+	name := strings.TrimSpace(md["name"])
 
 	roles := []string{"standard", "readonly", "financial_admin", "admin"}
 
@@ -774,7 +774,7 @@ func handleResponse(statusCode int, err error, successCode int, successMessage s
 		return false, err
 	} else if statusCode == successCode {
 		fmt.Printf("%v!", successMessage)
-		return false, nil
+		return true, nil
 	} else {
 		fmt.Println("Request failed!")
 		fmt.Println(statusCode)
