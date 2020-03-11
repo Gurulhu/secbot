@@ -479,7 +479,7 @@ func GIMSetApplicationCommand(md map[string]string, ev *slack.MessageEvent) {
 
 func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 
-	avalid, _ := GIMValidateApplication(md)
+	avalid, application := GIMValidateApplication(md)
 
 	if !avalid {
 		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma aplicação especificada e aplicação padrão não configurada\n"+
@@ -501,13 +501,20 @@ func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 	var failed []GenericError
 
 	for _, user := range users {
-		status, err := GIMDeactivateUser(user)
+		status, statuscode, err := GIMDeactivateUser(user)
 
 		if !status {
-			failed = append(failed, GenericError{Key: user,
-				Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: %s",
-					err.Error())})
-			continue
+			if statuscode == 890 {
+				failed = append(failed, GenericError{Key: user,
+					Error: fmt.Sprintf("Usuário não existe na aplicação %s",
+						application)})
+				continue
+			} else {
+				failed = append(failed, GenericError{Key: user,
+					Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: %s",
+						err.Error())})
+				continue
+			}
 		}
 
 		desactive = append(desactive, user)
@@ -529,9 +536,21 @@ func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 }
 
 // GIMDeactivateUser deactivate an user
-func GIMDeactivateUser(user string) (bool, error) {
+func GIMDeactivateUser(user string) (bool, int, error) {
 
 	cred, err := GIMGetCredentials(string(credentialApp.Buffer()))
+
+	apiKey, _ := memguard.NewImmutableFromBytes([]byte(cred.Password))
+	appKey, _ := memguard.NewImmutableFromBytes([]byte(cred.Login))
+
+	gclient := gimclient.NewClient(apiKey, appKey)
+
+	gresp, err := gclient.GetUser(user)
+	if err != nil {
+		return false, gresp.StatusCode, err
+	} else if gresp.StatusCode == 400 {
+		return false, 890, err
+	}
 
 	content := []GIMDeactivatePatch{{Op: "replace", Path: "/active", Value: false}}
 	payload, _ := json.Marshal(GIMDeactivatePayload{DeactivatePatches: content})
@@ -546,29 +565,18 @@ func GIMDeactivateUser(user string) (bool, error) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return false, err
+		return false, resp.StatusCode, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		return true, nil
-	} else if resp.StatusCode == http.StatusBadRequest {
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
-
-		if err != nil {
-			return false, err
-		}
-
-		body := string(bodyBytes)
-
-		// user's not found are already terminated or never associated
-		userNotFound := strings.Contains(body, "User not found.") || strings.Contains(body, "The specified user is not associated to this application.")
-
-		return userNotFound, nil
+		return true, resp.StatusCode, nil
+	} else {
+		return false, resp.StatusCode, nil
 	}
 
 	err = fmt.Errorf("error deactivating user %s! Status code: %d", user, resp.StatusCode)
-	return false, err
+	return false, resp.StatusCode, err
 }
 
 // GIMObtainUsers deactivate an user
