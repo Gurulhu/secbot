@@ -501,7 +501,7 @@ func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 	var failed []GenericError
 
 	for _, user := range users {
-		status, statuscode, err := GIMDeactivateUser(user)
+		status, statuscode, _ := GIMDeactivateUser(user)
 
 		if !status {
 			if statuscode == 890 {
@@ -511,8 +511,8 @@ func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 				continue
 			} else {
 				failed = append(failed, GenericError{Key: user,
-					Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: %s",
-						err.Error())})
+					Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: status code: %s",
+						statuscode)})
 				continue
 			}
 		}
@@ -523,7 +523,7 @@ func gimDeleteCommand(md map[string]string, ev *slack.MessageEvent) {
 	var msg = fmt.Sprintf("@%s *### Resultado ###*\n", ev.Username)
 
 	if len(desactive) > 0 {
-		msg += fmt.Sprintf("*Usuários Desativados*\n%s", strings.Join(desactive, " "))
+		msg += fmt.Sprintf("*Usuários Desativados*\n%s\n", strings.Join(desactive, " "))
 	}
 	if len(failed) > 0 {
 		msg += fmt.Sprintf("*Erros*\n")
@@ -546,6 +546,8 @@ func GIMDeactivateUser(user string) (bool, int, error) {
 	gclient := gimclient.NewClient(apiKey, appKey)
 
 	gresp, err := gclient.GetUser(user)
+	apiKey.Destroy()
+	appKey.Destroy()
 	if err != nil {
 		return false, gresp.StatusCode, err
 	} else if gresp.StatusCode == 400 {
