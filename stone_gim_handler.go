@@ -736,6 +736,8 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 	checkUser, err := handleResponse(resp.StatusCode, err, 400, "User not found, you may proceed")
 	if !checkUser {
 		return false, err
+		apiKey.Destroy()
+		appKey.Destroy()
 	}
 
 	// Generate secret
@@ -749,6 +751,8 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 	checkAdd, _ := handleResponse(resp.StatusCode, err, 201, "User created")
 	if !checkAdd {
 		return false, err
+		apiKey.Destroy()
+		appKey.Destroy()
 	}
 
 	// Add role to user
@@ -757,6 +761,8 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 	checkRole, _ := handleResponse(resp.StatusCode, err, 200, "Role "+role+" added successfully")
 	if !checkRole {
 		return false, err
+		apiKey.Destroy()
+		appKey.Destroy()
 	}
 
 	// Requesting email send by sendgrid
@@ -772,8 +778,12 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 	checkSend, _ := handleResponse(response.StatusCode, err, 202, " Email send requested (sendgrid)\n")
 	if !checkSend {
 		return false, err
+		apiKey.Destroy()
+		appKey.Destroy()
 	}
 	defer memguard.DestroyAll()
+	apiKey.Destroy()
+	appKey.Destroy()
 	return true, nil
 }
 
