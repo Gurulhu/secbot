@@ -82,7 +82,7 @@ func TerminateGIMUsers(users *map[string]string) {
 		} else {
 
 			for _, email := range notTerminated {
-				_, _, err := GIMDeactivateUser(email)
+				_, err := GIMDeactivateUser(email)
 
 				if err != nil {
 					notTerminatedUsers = append(notTerminatedUsers, email)
