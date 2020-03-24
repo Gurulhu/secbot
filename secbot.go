@@ -46,6 +46,8 @@ var metabaseURL = os.Getenv("METABASE_URL")
 
 var First_Time = false
 
+var Sendkey, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("SENDGRID_API_KEY")))
+
 // Reads the <slack_token> variable and creates a new Slack client, destroying the token afterwards.
 func GetAPI() *slack.Client {
 	api := slack.New(string(slack_token.Buffer()))
