@@ -16,7 +16,7 @@ func CFHandlerStart() {
 		Regex:       regexp.MustCompile("cf (?P<command>list)"),
 		Help:        "Lista os IPs bloqueados na Cloudflare",
 		Usage:       "cf list",
-		Handler:     WAFListCommand,
+		Handler:     CFListCommand,
 		HandlerName: "cf"})
 
 	AddCommand(Command{
