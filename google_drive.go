@@ -15,7 +15,7 @@ import (
 	"github.com/awnumar/memguard"
 )
 
-var baseURL = "https://content.googleapis.com"
+var baseURL = "https://www.googleapis.com"
 
 // DriveFile represents each file in the v3 files payload
 type DriveFile struct {
