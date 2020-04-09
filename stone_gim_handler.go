@@ -850,7 +850,7 @@ func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
 	} else {
 		msg += fmt.Sprintf("*Erros*\n")
 		for _, cpf := range cpfs {
-			msg += fmt.Sprintf("`CPF %s não existe na aplicação\n`", cpf)
+			msg += fmt.Sprintf("`CPF %s não existe na aplicação`\n", cpf)
 		}
 	}
 	PostMessage(ev.Channel, msg)
