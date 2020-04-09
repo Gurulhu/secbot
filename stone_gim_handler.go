@@ -827,20 +827,16 @@ func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
 			if strings.Contains(user.Comment, cpf) {
 				status, statuscode, _ := GIMDeactivateUser(user.Email)
 				if !status {
-					if statuscode == 890 {
-						failed = append(failed, GenericError{Key: user.Email,
-							Error: fmt.Sprintf("Usuário não existe na aplicação %s",
-								application)})
-						continue
-					} else {
-						failed = append(failed, GenericError{Key: user.Email,
-							Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: status code: %s",
-								statuscode)})
-						continue
-					}
+					failed = append(failed, GenericError{Key: user.Email,
+						Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: status code: %s",
+							statuscode)})
+					continue
 				}
-
 				desactive = append(desactive, user.Email)
+			} else {
+				failed = append(failed, GenericError{Key: user.Email,
+					Error: fmt.Sprintf("Usuário não existe na aplicação %s",
+						application)})
 			}
 		}
 	}
