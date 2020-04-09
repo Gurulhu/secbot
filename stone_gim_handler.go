@@ -800,7 +800,7 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 
 func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
 
-	avalid, application := GIMValidateApplication(md)
+	avalid, _ := GIMValidateApplication(md)
 
 	if !avalid {
 		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma aplicação especificada e aplicação padrão não configurada\n"+
