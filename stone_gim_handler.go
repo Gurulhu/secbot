@@ -149,14 +149,14 @@ func StoneGIMHandlerStart() {
 		}})
 
 	AddCommand(Command{
-		Regex:              regexp.MustCompile("gim (?P<command>deletecpf) (?P<cpf>\\S+)"),
+		Regex:              regexp.MustCompile("gim (?P<command>deletecpf) (?P<cpf>.*)"),
 		Help:               "Desativa os <cpf> na aplicação <application>",
 		Usage:              "gim delete <cpf>",
 		Handler:            gimDeleteCPFCommand,
 		RequiredPermission: "gim",
 		HandlerName:        "gim",
 		Parameters: map[string]string{
-			"cpf": "\\S+",
+			"cpf": ".*",
 		}})
 }
 
