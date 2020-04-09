@@ -833,10 +833,6 @@ func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
 					continue
 				}
 				desactive = append(desactive, user.Email)
-			} else {
-				failed = append(failed, GenericError{Key: user.Email,
-					Error: fmt.Sprintf("Usuário não existe na aplicação %s",
-						application)})
 			}
 		}
 	}
@@ -851,6 +847,9 @@ func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
 		for _, v := range failed {
 			msg += fmt.Sprintf("%s - `%s`\n", v.Key, v.Error)
 		}
+	} else {
+		msg += fmt.Sprintf("CPF %s não existe na aplicação\n", strings.Join(cpfs, " "))
+
 	}
 	PostMessage(ev.Channel, msg)
 }
