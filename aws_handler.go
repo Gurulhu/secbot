@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/awnumar/memguard"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -306,7 +304,7 @@ Usage
 */
 func AWSWhoisIPCommand(md map[string]string, ev *slack.MessageEvent) {
 	if !AWSHasRegion(md["region"]) {
-		P	tMessage(ev.Channel, fmt.Sprintf("@%s Região `%s` inválida, os valores possíveis são:\n%s",
+		PostMessage(ev.Channel, fmt.Sprintf("@%s Região `%s` inválida, os valores possíveis são:\n%s",
 			ev.Username, md["region"], strings.Join(AWSListRegions(), "\n")))
 		return
 	}
@@ -749,22 +747,20 @@ func AWSReset(email string) (bool, error) {
 	subject := "[Security][Pagar.me] Credencias SSO Auth0"
 	to := mail.NewEmail("", strings.TrimSuffix(email, "<br>"))
 	plainTextContent := "Pagar.me"
-	htmlContent := fmt.Sprintf("Suas credenciais foram geradas para o acesso ao AUth0.<br><br>Utilize este link para o acesso: %s .<br><br>O link para a senha será acessivel somente uma vez, portanto, salve a senha em seu cofre.<br><br><br>User: %s<br>Password: %s <br><br><br>Security Team - Pagar.me", string(LinkSSo) , user[0], link[0])
+	htmlContent := fmt.Sprintf("Suas credenciais foram geradas para o acesso ao AUth0.<br><br>Utilize este link para o acesso: %s .<br><br>O link para a senha será acessivel somente uma vez, portanto, salve a senha em seu cofre.<br><br><br>User: %s<br>Password: %s <br><br><br>Security Team - Pagar.me", string(LinkSSo), user[0], link[0])
 	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
-	sgclient := sendgrid.NewSendClient(string(sendkey.Buffer()))
+	sgclient := sendgrid.NewSendClient(string(Sendkey.Buffer()))
 	response, err := sgclient.Send(message)
 
-	if response.StatusCode != 202{
+	if response.StatusCode != 202 {
 		fmt.Println(response)
 		return false, nil
-	}else if err != nil {
+	} else if err != nil {
 		fmt.Println(err)
 		return false, err
 	}
-	
-}
 
-	res, err := DSReset("security", "us-east-1", user[0], passwd)
+	_, err = DSReset("security", "us-east-1", user[0], passwd)
 	if err != nil {
 		fmt.Println(err)
 		return false, err
