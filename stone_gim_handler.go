@@ -147,6 +147,17 @@ func StoneGIMHandlerStart() {
 			"key":         "\\S+",
 			"api_key":     "\\S+",
 		}})
+
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("gim (?P<command>deletecpf) (?P<cpf>.*)"),
+		Help:               "Desativa os <cpf> na aplicação <application>",
+		Usage:              "gim delete <cpf>",
+		Handler:            gimDeleteCPFCommand,
+		RequiredPermission: "gim",
+		HandlerName:        "gim",
+		Parameters: map[string]string{
+			"cpf": ".*",
+		}})
 }
 
 func GIMHasApplication(application string) bool {
@@ -785,6 +796,64 @@ func giminviteusers(name string, email string, cpf string, role string) (bool, e
 	apiKey.Destroy()
 	appKey.Destroy()
 	return true, nil
+}
+
+func gimDeleteCPFCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	avalid, _ := GIMValidateApplication(md)
+
+	if !avalid {
+		PostMessage(ev.Channel, fmt.Sprintf("@%s nenhuma aplicação especificada e aplicação padrão não configurada\n"+
+			"Utilize `gim set default application <application>` "+
+			"ou invoque novamente o comando especificando a conta", ev.Username))
+		return
+	}
+
+	var cpfs []string
+
+	for _, v := range strings.Split(md["cpf"], " ") {
+		cpfs = append(cpfs, v)
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("@%s Desativando os seguintes CPFs: %s", ev.Username, strings.Join(cpfs, " ")))
+
+	var desactive []string
+
+	var failed []GenericError
+
+	gimUsers, _ := GIMObtainUsers()
+	for _, cpf := range cpfs {
+		for _, user := range *gimUsers {
+			if strings.Contains(user.Comment, cpf) {
+				status, statuscode, _ := GIMDeactivateUser(user.Email)
+				if !status {
+					failed = append(failed, GenericError{Key: user.Email,
+						Error: fmt.Sprintf("Ocorreu um erro ao desativar o usuário: status code: %s",
+							statuscode)})
+					continue
+				}
+				desactive = append(desactive, user.Email)
+			}
+		}
+	}
+
+	var msg = fmt.Sprintf("@%s *### Resultado ###*\n", ev.Username)
+
+	if len(desactive) > 0 {
+		msg += fmt.Sprintf("*Usuários Desativados*\n%s\n", strings.Join(desactive, " "))
+	}
+	if len(failed) > 0 {
+		msg += fmt.Sprintf("*Erros*\n")
+		for _, v := range failed {
+			msg += fmt.Sprintf("%s - `%s`\n", v.Key, v.Error)
+		}
+	} else {
+		msg += fmt.Sprintf("*Erros*\n")
+		for _, cpf := range cpfs {
+			msg += fmt.Sprintf("`CPF %s não existe na aplicação`\n", cpf)
+		}
+	}
+	PostMessage(ev.Channel, msg)
 }
 
 func handleResponse(statusCode int, err error, successCode int, successMessage string) (bool, error) {
