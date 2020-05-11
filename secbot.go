@@ -48,6 +48,10 @@ var First_Time = false
 
 var Sendkey, _ = memguard.NewImmutableFromBytes([]byte(os.Getenv("SENDGRID_API_KEY")))
 
+var LinkSSo = os.Getenv("LINK_SSO")
+
+var DSid = os.Getenv("DSid")
+
 // Reads the <slack_token> variable and creates a new Slack client, destroying the token afterwards.
 func GetAPI() *slack.Client {
 	api := slack.New(string(slack_token.Buffer()))

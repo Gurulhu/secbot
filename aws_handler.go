@@ -3,16 +3,26 @@ package secbot
 import (
 	"errors"
 	"fmt"
+	"math/rand"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/awnumar/memguard"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/directoryservice"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-ini/ini"
 	"github.com/nlopes/slack"
+	sendgrid "github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
-	"regexp"
-	"strings"
-	"time"
+	"github.com/tebeka/selenium"
+	"github.com/tebeka/selenium/chrome"
 )
 
 var credentials_path = fmt.Sprintf("%s/.aws/credentials", GetHome())
@@ -108,6 +118,17 @@ func AWSHandlerStart() {
 		Usage:       "aws find <name>",
 		Parameters: map[string]string{
 			"name": "\\S+",
+		}})
+
+	AddCommand(Command{
+		Regex:              regexp.MustCompile("aws (?P<command>recover) (?P<users>.*)"),
+		Help:               "Envia email de recuperação de senha para <users>",
+		Usage:              "aws recover <users>",
+		Handler:            AWSecoverCommand,
+		RequiredPermission: "aws_reset",
+		HandlerName:        "aws",
+		Parameters: map[string]string{
+			"users": ".*",
 		}})
 
 	aws_regions = append(aws_regions, AWSRegion{Name: "us-east-1", Description: "US East (N. Virginia)"})
@@ -285,7 +306,7 @@ Usage
 */
 func AWSWhoisIPCommand(md map[string]string, ev *slack.MessageEvent) {
 	if !AWSHasRegion(md["region"]) {
-		PostMessage(ev.Channel, fmt.Sprintf("@%s Região `%s` inválida, os valores possíveis são:\n%s",
+		P	tMessage(ev.Channel, fmt.Sprintf("@%s Região `%s` inválida, os valores possíveis são:\n%s",
 			ev.Username, md["region"], strings.Join(AWSListRegions(), "\n")))
 		return
 	}
@@ -634,4 +655,159 @@ func AWSListProfiles() []string {
 	}
 
 	return sections
+}
+
+func AWSecoverCommand(md map[string]string, ev *slack.MessageEvent) {
+
+	var users []string
+
+	for _, v := range strings.Split(md["users"], " ") {
+		users = append(users, StripMailTo(v))
+	}
+
+	PostMessage(ev.Channel, fmt.Sprintf("@%s Recuperando senha dos seguintes usuários: %s", ev.Username, strings.Join(users, " ")))
+
+	var recovered []string
+
+	var failed []GenericError
+
+	for _, user := range users {
+
+		Reset, err := AWSReset(user)
+
+		if err != nil {
+			failed = append(failed, GenericError{Key: user,
+				Error: fmt.Sprintf("Ocorreu um erro resetando a senha do usuário: %s",
+					err.Error())})
+			continue
+		}
+
+		if Reset {
+			recovered = append(recovered, user)
+			continue
+		} else {
+			failed = append(failed, GenericError{Key: user, Error: fmt.Sprintf("Erro: %s",
+				err)})
+			continue
+		}
+	}
+
+	var msg = fmt.Sprintf("@%s *### Resultado ###*\n", ev.Username)
+
+	if len(recovered) > 0 {
+		msg += fmt.Sprintf("*Usuários Recuperados*\n%s", strings.Join(recovered, " "))
+	}
+	if len(failed) > 0 {
+		msg += fmt.Sprintf("*Erros*\n")
+		for _, v := range failed {
+			msg += fmt.Sprintf("%s - `%s`\n", v.Key, v.Error)
+		}
+	}
+
+	PostMessage(ev.Channel, msg)
+}
+
+func AWSReset(email string) (bool, error) {
+
+	port := 53312
+	var opts []selenium.ServiceOption
+	service, err := selenium.NewChromeDriverService("chromedriver", port, opts...)
+	defer service.Stop()
+
+	caps := selenium.Capabilities{
+		"browserName": "chrome",
+	}
+	args := []string{"--headless"}
+	caps.AddChrome(chrome.Capabilities{
+		Args: args,
+	})
+	Driver, err := selenium.NewRemote(caps, "http://127.0.0.1:"+strconv.Itoa(port)+"/wd/hub")
+	if err != nil {
+		fmt.Println(err)
+		return false, err
+	}
+
+	Driver.Get("https://viacry.pt")
+	message1, _ := Driver.FindElement(selenium.ByID, "message")
+	passwd := GeneratePassword(32)
+	err = message1.SendKeys(passwd)
+	if err != nil {
+		fmt.Println(err)
+		return false, err
+	}
+	click, _ := Driver.FindElement(selenium.ByXPATH, "//button[@type='submit']")
+	click.Click()
+	time.Sleep(2 * time.Second)
+
+	Html, _ := Driver.PageSource()
+	link := strings.Split(Html, "this.value = '")
+	link = strings.Split(link[1], "'")
+
+	user := strings.Split(email, "@")
+
+	from := mail.NewEmail("Security Pagarme", "security@pagar.me")
+	subject := "[Security][Pagar.me] Credencias SSO Auth0"
+	to := mail.NewEmail("", strings.TrimSuffix(email, "<br>"))
+	plainTextContent := "Pagar.me"
+	htmlContent := fmt.Sprintf("Suas credenciais foram geradas para o acesso ao AUth0.<br><br>Utilize este link para o acesso: %s .<br><br>O link para a senha será acessivel somente uma vez, portanto, salve a senha em seu cofre.<br><br><br>User: %s<br>Password: %s <br><br><br>Security Team - Pagar.me", string(LinkSSo) , user[0], link[0])
+	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
+	sgclient := sendgrid.NewSendClient(string(sendkey.Buffer()))
+	response, err := sgclient.Send(message)
+
+	if response.StatusCode != 202{
+		fmt.Println(response)
+		return false, nil
+	}else if err != nil {
+		fmt.Println(err)
+		return false, err
+	}
+	
+}
+
+	res, err := DSReset("security", "us-east-1", user[0], passwd)
+	if err != nil {
+		fmt.Println(err)
+		return false, err
+	}
+
+	return true, nil
+
+}
+
+func DSReset(account string, region string, UserN string, NPasswd string) (*directoryservice.ResetUserPasswordOutput, error) {
+
+	if !stringInSlice(account, AWSListProfiles()) {
+		err := errors.New(fmt.Sprintf("Invalid account %s", account))
+
+		return nil, err
+	}
+
+	sess, _ := AWSGetSession(account, region)
+	ds := directoryservice.New(sess)
+	result, err := ds.ResetUserPassword(&directoryservice.ResetUserPasswordInput{
+		DirectoryId: &DSid,
+		NewPassword: &NPasswd,
+		UserName:    &UserN})
+
+	return result, err
+}
+
+func GeneratePassword(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	digits := "0123456789"
+	specials := "~=+%^*/()[]{}/!@#$?|"
+	all := "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+		"abcdefghijklmnopqrstuvwxyz" +
+		digits + specials
+	buf := make([]byte, length)
+	buf[0] = digits[rand.Intn(len(digits))]
+	buf[1] = specials[rand.Intn(len(specials))]
+	for i := 2; i < length; i++ {
+		buf[i] = all[rand.Intn(len(all))]
+	}
+	rand.Shuffle(len(buf), func(i, j int) {
+		buf[i], buf[j] = buf[j], buf[i]
+	})
+	str := string(buf)
+	return str
 }
