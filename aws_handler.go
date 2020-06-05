@@ -511,7 +511,7 @@ func AWSListInstancesCommand(md map[string]string, ev *slack.MessageEvent) {
 
 		for _, v := range instances {
 			msg += fmt.Sprintf("\n*ID:* %v | *Creation Date:* %v | *Private IP:* %v | *Public IP:* %v | "+
-				"*Key Pair:* %v | *Name:* %v", v.ID, v.LaunchTime, v.PrivateIP, v.PublicIP, v.KeyPair, v.Name)
+				"*Key Pair:* %v | *Name:* %v | *Status* %v :", v.ID, v.LaunchTime, v.PrivateIP, v.PublicIP, v.KeyPair, v.Name, v.Status)
 		}
 
 		PostMessage(ev.Channel, msg)
@@ -599,6 +599,10 @@ func AWSListInstances(account string, region string) ([]AWSInstance, error) {
 
 			if i.LaunchTime != nil {
 				v.LaunchTime = *i.LaunchTime
+			}
+
+			if i.State != nil {
+				v.State = *i.State.Name
 			}
 
 			v.Account = account
