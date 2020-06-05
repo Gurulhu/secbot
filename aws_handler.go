@@ -602,10 +602,6 @@ func AWSListInstances(account string, region string) ([]AWSInstance, error) {
 				v.LaunchTime = *i.LaunchTime
 			}
 
-			if i.State != nil {
-				v.State = *i.State.Name
-			}
-
 			v.Account = account
 			v.Region = region
 
