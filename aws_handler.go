@@ -35,7 +35,7 @@ type AWSInstance struct {
 	Name       string
 	Account    string
 	Region     string
-	State			 string
+	State      string
 }
 
 func AWSHandlerStart() {
@@ -600,6 +600,10 @@ func AWSListInstances(account string, region string) ([]AWSInstance, error) {
 
 			if i.LaunchTime != nil {
 				v.LaunchTime = *i.LaunchTime
+			}
+
+			if i.State != nil {
+				v.State = *i.State.Name
 			}
 
 			v.Account = account
