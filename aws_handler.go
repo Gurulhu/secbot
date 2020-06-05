@@ -35,6 +35,7 @@ type AWSInstance struct {
 	Name       string
 	Account    string
 	Region     string
+	State			 string
 }
 
 func AWSHandlerStart() {
